@@ -5,6 +5,7 @@ pub mod coverage;
 pub mod graph;
 pub mod validation;
 pub mod sequence_qv;
+pub mod hold2out;
 
 #[cfg(test)]
 mod tests {

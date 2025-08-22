@@ -1,4 +1,4 @@
-use likegt::{genotype, graph};
+use likegt::{genotype, graph, io, validation, hold2out};
 
 use clap::{Parser, Subcommand};
 use anyhow::Result;
@@ -58,6 +58,24 @@ enum Commands {
         #[arg(short, long, default_value = "8")]
         threads: usize,
     },
+    
+    /// Validate genotyping accuracy with hold-0-out
+    Validate {
+        /// Path to reference coverage TSV (gzipped)
+        #[arg(short, long)]
+        paths: String,
+        
+        /// Output file for validation report
+        #[arg(short, long, default_value = "validation_report.txt")]
+        output: String,
+    },
+    
+    /// Compare hold-0-out vs hold-2-out validation
+    CompareHoldout {
+        /// Path to reference coverage TSV (gzipped)
+        #[arg(short, long)]
+        paths: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -93,6 +111,19 @@ fn main() -> Result<()> {
                 println!("  GFA: {}", graph.gfa_path.display());
                 println!("  Paths: {}", graph.paths_path.display());
             }
+        }
+        Commands::Validate { paths, output } => {
+            let ref_data = io::read_gzip_tsv(&paths)?;
+            let results = validation::validate_all_individuals(&ref_data)?;
+            let report = validation::generate_accuracy_report(&results);
+            
+            std::fs::write(&output, &report)?;
+            println!("{}", report);
+            println!("\nReport saved to: {}", output);
+        }
+        Commands::CompareHoldout { paths } => {
+            let ref_data = io::read_gzip_tsv(&paths)?;
+            hold2out::compare_validation_methods(&ref_data)?;
         }
     }
     
