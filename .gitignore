@@ -1,0 +1,39 @@
+# Rust
+/target/
+Cargo.lock
+
+# Test data
+*.fq
+*.fa
+*.sam
+*.bam
+*.gaf
+*.paf
+*.og
+*.png
+*.seq
+
+# Temp files
+test_seq*
+test_sample*
+combined.*
+path*.fa
+path*.seq
+*_reads.*
+
+# External repos
+cosigt/
+locityper/
+
+# Python
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+
+# Output
+hold0_results/
+test_output/
+validate_results/
