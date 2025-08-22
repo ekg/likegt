@@ -4,6 +4,7 @@ pub mod genotype;
 pub mod coverage;
 pub mod graph;
 pub mod validation;
+pub mod sequence_qv;
 
 #[cfg(test)]
 mod tests {
