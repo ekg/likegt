@@ -27,22 +27,49 @@ impl GenotypeData {
         
         let sample_coverage = sample_data.coverages[0].clone();
         
-        // Verify all coverage vectors have same length
-        let expected_len = sample_coverage.len();
+        // Handle dimension mismatch between reference and sample
+        // Reference from odgi paths -H only includes visited nodes
+        // Sample from gafpack includes all nodes in the graph
+        let ref_len = reference_haplotypes.coverages[0].len();
+        let sample_len = sample_coverage.len();
+        
+        let aligned_sample_coverage = if ref_len != sample_len {
+            log::warn!(
+                "Dimension mismatch: reference has {} nodes, sample has {} nodes",
+                ref_len,
+                sample_len
+            );
+            
+            if ref_len < sample_len {
+                // Truncate sample to reference size (assume first nodes match)
+                log::info!("Truncating sample coverage to match reference dimensions");
+                sample_coverage[..ref_len].to_vec()
+            } else {
+                // Pad sample with zeros
+                log::info!("Padding sample coverage to match reference dimensions");
+                let mut padded = sample_coverage.clone();
+                padded.resize(ref_len, 0.0);
+                padded
+            }
+        } else {
+            sample_coverage
+        };
+        
+        // Verify all reference vectors have same length
         for (i, cov) in reference_haplotypes.coverages.iter().enumerate() {
-            if cov.len() != expected_len {
+            if cov.len() != ref_len {
                 return Err(anyhow::anyhow!(
-                    "Coverage vector length mismatch: {} has {} nodes, expected {}",
+                    "Reference coverage vectors have inconsistent lengths: {} has {} nodes, expected {}",
                     reference_haplotypes.ids[i],
                     cov.len(),
-                    expected_len
+                    ref_len
                 ));
             }
         }
         
         Ok(Self {
             reference_haplotypes,
-            sample_coverage,
+            sample_coverage: aligned_sample_coverage,
             sample_id,
         })
     }

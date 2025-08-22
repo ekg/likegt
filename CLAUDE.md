@@ -43,3 +43,22 @@ Just because tests pass doesn't mean the system functions.
 **STOP FAKING IT WITH VIBES**
 **DO THE ACTUAL WORK**
 **TEST THE REAL THING**
+
+## Additional Lessons Learned
+
+### Graph Consistency is CRITICAL
+- ALWAYS use the same graph for reference and test
+- For hold-0-out: Use original graph for everything
+- For hold-2-out: Create new graph, use IT for everything
+- Node IDs must match between reference and test
+
+### Tool Incompatibility
+- odgi paths -H: Only outputs visited nodes (subset)
+- gafpack: Outputs ALL nodes in graph
+- These are fundamentally incompatible without careful mapping
+- Solution: Either generate everything with same tool OR handle dimension mismatch correctly
+
+### Test What You Build
+- Built Rust implementation but never used it
+- Wrote Python workarounds instead of fixing core code
+- Must test the ACTUAL system, not simplified versions
