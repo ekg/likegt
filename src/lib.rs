@@ -6,6 +6,8 @@ pub mod graph;
 pub mod validation;
 pub mod sequence_qv;
 pub mod hold2out;
+pub mod real_pipeline;
+pub mod real_validation;
 
 #[cfg(test)]
 mod tests {
