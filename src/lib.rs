@@ -8,6 +8,7 @@ pub mod sequence_qv;
 pub mod hold2out;
 pub mod real_pipeline;
 pub mod real_validation;
+pub mod align_coverage;
 
 #[cfg(test)]
 mod tests {

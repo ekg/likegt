@@ -160,7 +160,11 @@ mod tests {
             "test_sample".to_string()
         );
         
-        assert!(result.is_err());
+        // Now we handle dimension mismatch by truncating/padding
+        assert!(result.is_ok());
+        let data = result.unwrap();
+        // Sample should be padded to match reference length
+        assert_eq!(data.sample_coverage.len(), 3);
     }
     
     #[test]
