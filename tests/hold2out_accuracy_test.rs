@@ -29,7 +29,7 @@ fn test_hold2out_genotype_accuracy() {
 fn test_hold0out_accuracy() {
     // For hold-0-out (individual included), we should get near-perfect accuracy
     use math::cosine_similarity;
-    use io::load_coverage_tsv;
+    use io::read_gzip_tsv;
     
     // This would load pre-computed test data
     // In a real test, we'd have test fixtures with known good data
@@ -44,13 +44,18 @@ fn test_hold0out_accuracy() {
 
 #[test]
 fn test_genotype_qv_calculation() {
-    use sequence_qv::identity_to_qv;
+    use sequence_qv::SequenceQV;
     
     // Test QV calculation from identity
-    assert!((identity_to_qv(0.99) - 20.0).abs() < 0.1);  // 99% identity = QV20
-    assert!((identity_to_qv(0.999) - 30.0).abs() < 0.1); // 99.9% identity = QV30
-    assert!((identity_to_qv(0.9999) - 40.0).abs() < 0.1); // 99.99% identity = QV40
+    let qv99 = SequenceQV::from_identity(0.99);
+    let qv999 = SequenceQV::from_identity(0.999);
+    
+    assert!((qv99.qv - 20.0).abs() < 0.1);  // 99% identity ≈ QV20
+    assert!((qv999.qv - 30.0).abs() < 0.1); // 99.9% identity ≈ QV30
+    let qv9999 = SequenceQV::from_identity(0.9999);
+    assert!((qv9999.qv - 40.0).abs() < 0.1); // 99.99% identity ≈ QV40
     
     // Test the poor result we're seeing
-    assert!((identity_to_qv(0.25) - 1.249).abs() < 0.01); // 25% identity = QV~1.25
+    let qv25 = SequenceQV::from_identity(0.25);
+    assert!((qv25.qv - 1.249).abs() < 0.01); // 25% identity ≈ QV~1.25
 }

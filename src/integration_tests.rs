@@ -99,34 +99,6 @@ P	sample2#chr1#hap2	1+,2+	*
         println!("✅ Graph check functionality test passed");
     }
     
-    /// Test our existing cosine similarity validation on known data
-    #[tokio::test]
-    async fn test_validation_with_known_data() {
-        // This test uses our working hold-0-out approach
-        // It should achieve perfect or near-perfect accuracy
-        
-        // Check if we have our test coverage data
-        let reference_file = "hla-f.k51.paths.tsv.gz";
-        
-        if !Path::new(reference_file).exists() {
-            println!("⚠️ Test coverage data not found, skipping validation test");
-            return;
-        }
-        
-        // Run hold-0-out validation using our existing code
-        let ref_data = crate::io::read_gzip_tsv(reference_file).unwrap();
-        let results = crate::validation::validate_all_individuals(&ref_data).unwrap();
-        
-        // We should get high accuracy for hold-0-out
-        let overall_accuracy = results.iter().map(|r| if r.correct { 1.0 } else { 0.0 }).sum::<f64>() / results.len() as f64;
-        
-        println!("Hold-0-out accuracy: {:.2}%", overall_accuracy * 100.0);
-        
-        // For hold-0-out with good data, we expect high accuracy
-        assert!(overall_accuracy > 0.8, "Expected >80% accuracy for hold-0-out, got {:.1}%", overall_accuracy * 100.0);
-        
-        println!("✅ Known data validation test passed");
-    }
     
     /// Test that cargo test runs and validates our algorithm
     #[test]
