@@ -9,6 +9,11 @@ pub mod hold2out;
 pub mod real_pipeline;
 pub mod real_validation;
 pub mod align_coverage;
+pub mod commands;
+pub mod pipeline;
+
+#[cfg(test)]
+pub mod integration_tests;
 
 #[cfg(test)]
 mod tests {

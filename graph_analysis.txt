@@ -1,0 +1,96 @@
+# Graph Genotyping Suitability Analysis
+
+## Graph Structure
+- Nodes: 3361
+- Edges: 5410
+- Paths: 132
+- Total sequence length: 233798 bp
+
+## Node Length Distribution
+- Min: 1 bp
+- Max: 3218 bp
+- Mean: 69.6 bp
+- Median: 3 bp
+
+## Path Statistics
+- Unique samples: 67
+- Average path length: 652.6 nodes
+- Paths per sample:
+  - HG02106: 2 paths
+  - NA19983: 2 paths
+  - HG01890: 2 paths
+  - NA19384: 2 paths
+  - HG00731: 2 paths
+  - HG03456: 2 paths
+  - HG02953: 2 paths
+  - HG00733: 2 paths
+  - HG02818: 2 paths
+  - NA19129: 2 paths
+  - HG04036: 2 paths
+  - HG02282: 2 paths
+  - NA20355: 2 paths
+  - HG02587: 2 paths
+  - HG03371: 2 paths
+  - HG02666: 2 paths
+  - HG00096: 2 paths
+  - HG01457: 2 paths
+  - NA24385: 2 paths
+  - NA19331: 2 paths
+  - HG02769: 2 paths
+  - HG00514: 2 paths
+  - HG03732: 2 paths
+  - NA18534: 2 paths
+  - HG01596: 2 paths
+  - NA20847: 2 paths
+  - NA19036: 2 paths
+  - HG02554: 2 paths
+  - HG03065: 2 paths
+  - HG01352: 2 paths
+  - NA19434: 2 paths
+  - HG03452: 2 paths
+  - HG01114: 2 paths
+  - NA19650: 2 paths
+  - NA19317: 2 paths
+  - HG02018: 2 paths
+  - HG00732: 2 paths
+  - HG00512: 2 paths
+  - HG00358: 2 paths
+  - HG00864: 2 paths
+  - HG02011: 2 paths
+  - NA19836: 2 paths
+  - HG00171: 2 paths
+  - NA18989: 2 paths
+  - HG03807: 2 paths
+  - HG03520: 2 paths
+  - HG03683: 2 paths
+  - NA21487: 2 paths
+  - NA19238: 2 paths
+  - NA19347: 2 paths
+  - NA12329: 2 paths
+  - chm13v2: 1 paths
+  - HG03248: 2 paths
+  - HG01505: 2 paths
+  - NA19240: 2 paths
+  - HG00513: 2 paths
+  - HG00268: 2 paths
+  - HG03009: 2 paths
+  - HG02059: 2 paths
+  - NA18939: 2 paths
+  - HG02492: 2 paths
+  - HG01573: 2 paths
+  - grch38: 1 paths
+  - NA19705: 2 paths
+  - NA20509: 2 paths
+  - HG04217: 2 paths
+  - NA19239: 2 paths
+
+## Complexity Metrics
+- Branching factor: 1.61
+- Path diversity: 0.04
+- Structural complexity: 4.00
+
+## Genotyping Suitability Assessment
+✅ **GOOD**: Graph appears suitable for genotyping
+
+### Recommendations:
+- Low path diversity may limit genotyping resolution

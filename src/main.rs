@@ -1,11 +1,10 @@
-use likegt::{genotype, graph, io, validation, hold2out};
-
 use clap::{Parser, Subcommand};
 use anyhow::Result;
 
 #[derive(Parser)]
 #[command(name = "likegt")]
-#[command(about = "Simplified graph-based genotyping", long_about = None)]
+#[command(about = "A tool for pangenome graph-based genotyping validation")]
+#[command(version)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -13,119 +12,83 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Genotype a sample using graph coverage
-    Genotype {
-        /// Path coverage file from odgi paths (gzip TSV)
+    /// Run validation tests (hold-0-out, hold-2-out, reference bias)
+    Validate {
+        /// Input FASTA file with sequences
         #[arg(short, long)]
-        paths: String,
+        fasta: String,
         
-        /// Sample coverage file from gafpack (gzip TSV)
-        #[arg(short, long)]
-        gaf: String,
-        
-        /// Output directory
-        #[arg(short, long)]
+        /// Output directory for results
+        #[arg(short, long, default_value = "validation_results")]
         output: String,
         
-        /// Sample ID
-        #[arg(short, long)]
-        id: String,
-        
-        /// Ploidy level
-        #[arg(short = 'n', long, default_value = "2")]
-        ploidy: usize,
-        
-        /// Number of threads
-        #[arg(short, long, default_value = "8")]
+        /// Number of threads to use
+        #[arg(short, long, default_value = "4")]
         threads: usize,
+        
+        /// K-mer size for graph construction
+        #[arg(short, long, default_value = "51")]
+        kmer_size: usize,
     },
     
-    /// Build a pangenome graph from sequences
+    /// Check if a graph is suitable for genotyping
+    Check {
+        /// Input GFA file
+        #[arg(short, long)]
+        gfa: String,
+        
+        /// Output report file
+        #[arg(short, long, default_value = "genotyping_report.txt")]
+        output: String,
+    },
+    
+    /// Build a pangenome graph from FASTA sequences
     Build {
         /// Input FASTA file
         #[arg(short, long)]
-        input: String,
+        fasta: String,
         
-        /// Output directory
+        /// Output GFA file
         #[arg(short, long)]
         output: String,
         
-        /// K-mer sizes for graph construction
-        #[arg(short, long, value_delimiter = ',', default_value = "51")]
-        k: Vec<usize>,
+        /// K-mer size
+        #[arg(short, long, default_value = "51")]
+        kmer_size: usize,
         
-        /// Number of threads
-        #[arg(short, long, default_value = "8")]
-        threads: usize,
-    },
-    
-    /// Validate genotyping accuracy with hold-0-out
-    Validate {
-        /// Path to reference coverage TSV (gzipped)
-        #[arg(short, long)]
-        paths: String,
-        
-        /// Output file for validation report
-        #[arg(short, long, default_value = "validation_report.txt")]
-        output: String,
-    },
-    
-    /// Compare hold-0-out vs hold-2-out validation
-    CompareHoldout {
-        /// Path to reference coverage TSV (gzipped)
-        #[arg(short, long)]
-        paths: String,
+        /// Segment length for pggb
+        #[arg(short, long, default_value = "10000")]
+        segment_length: usize,
     },
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     env_logger::init();
+    
     let cli = Cli::parse();
     
     match cli.command {
-        Commands::Genotype { 
-            paths, 
-            gaf, 
-            output, 
-            id, 
-            ploidy,
-            threads 
-        } => {
-            genotype::run_genotyping(&paths, &gaf, &output, &id, ploidy, threads)?;
+        Commands::Validate { fasta, output, threads, kmer_size } => {
+            likegt::commands::validate::run_validation(
+                &fasta,
+                &output, 
+                threads,
+                kmer_size,
+            ).await
         }
-        Commands::Build {
-            input,
-            output,
-            k,
-            threads,
-        } => {
-            let builder = graph::GraphBuilder::new(input, output)
-                .threads(threads)
-                .k_values(k);
-            
-            let result = builder.build()?;
-            log::info!("Built {} graphs for {}", result.graphs.len(), result.base_name);
-            
-            for graph in &result.graphs {
-                println!("Graph k={}:", graph.k);
-                println!("  GFA: {}", graph.gfa_path.display());
-                println!("  Paths: {}", graph.paths_path.display());
-            }
+        
+        Commands::Check { gfa, output } => {
+            likegt::commands::check::check_graph_genotyping_suitability(&gfa, &output)
         }
-        Commands::Validate { paths, output } => {
-            let ref_data = io::read_gzip_tsv(&paths)?;
-            let results = validation::validate_all_individuals(&ref_data)?;
-            let report = validation::generate_accuracy_report(&results);
-            
-            std::fs::write(&output, &report)?;
-            println!("{}", report);
-            println!("\nReport saved to: {}", output);
-        }
-        Commands::CompareHoldout { paths } => {
-            let ref_data = io::read_gzip_tsv(&paths)?;
-            hold2out::compare_validation_methods(&ref_data)?;
+        
+        Commands::Build { fasta, output, kmer_size, segment_length } => {
+            likegt::pipeline::build::build_graph_from_fasta(
+                &fasta,
+                &output,
+                kmer_size,
+                segment_length,
+            ).await
         }
     }
-    
-    Ok(())
 }

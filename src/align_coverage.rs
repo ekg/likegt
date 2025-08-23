@@ -52,7 +52,7 @@ pub fn align_coverage_dimensions(
         }
         
         // For each odgi node column, find its position in gafpack
-        for (odgi_idx, odgi_header) in odgi_headers.iter().enumerate() {
+        for (_odgi_idx, odgi_header) in odgi_headers.iter().enumerate() {
             if odgi_header.starts_with("node.") {
                 // Find this node in gafpack headers
                 if let Some(gafpack_idx) = gafpack_headers.iter().position(|h| h == odgi_header) {
