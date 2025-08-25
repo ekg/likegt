@@ -73,8 +73,8 @@ enum Commands {
         keep_intermediates: bool,
     },
     
-    /// Run complete hold-2-out validation pipeline
-    Hold2Out {
+    /// Run complete hold-out validation pipeline
+    HoldOut {
         /// Input FASTA sequences  
         #[arg(short, long)]
         fasta: String,
@@ -87,9 +87,13 @@ enum Commands {
         #[arg(short, long, default_value = "hold2out_results")]
         output: String,
         
-        /// Test individual to hold out (e.g., "HG00096")
+        /// Test individual to hold out (e.g., "HG00096" or "all" for all samples)
         #[arg(short, long)]
         individual: String,
+        
+        /// Number of haplotypes to hold out (1 or 2)
+        #[arg(long, default_value = "2")]
+        hold: usize,
         
         /// Ploidy (number of haplotypes per individual)
         #[arg(short, long, default_value = "2")]
@@ -181,11 +185,12 @@ async fn main() -> Result<()> {
             ).await
         }
         
-        Commands::Hold2Out { 
+        Commands::HoldOut { 
             fasta,
             graph,
             output, 
-            individual, 
+            individual,
+            hold,
             ploidy, 
             threads, 
             kmer_size,
@@ -201,26 +206,52 @@ async fn main() -> Result<()> {
             verbose,
             format 
         } => {
-            likegt::commands::hold2out::run_complete_hold2out_pipeline(
-                &fasta,
-                &graph,
-                &output,
-                &individual,
-                ploidy,
-                threads,
-                kmer_size,
-                &simulator,
-                read_length,
-                coverage_depth,
-                fragment_length,
-                fragment_std,
-                &aligner,
-                &preset,
-                keep_files,
-                sequence_qv,
-                verbose,
-                &format,
-            ).await
+            // Check if batch processing
+            if individual == "all" || individual.contains(',') {
+                likegt::commands::hold2out::run_batch_hold2out(
+                    &fasta,
+                    &graph,
+                    &output,
+                    &individual,
+                    hold,
+                    ploidy,
+                    threads,
+                    kmer_size,
+                    &simulator,
+                    read_length,
+                    coverage_depth,
+                    fragment_length,
+                    fragment_std,
+                    &aligner,
+                    &preset,
+                    keep_files,
+                    sequence_qv,
+                    verbose,
+                    &format,
+                ).await
+            } else {
+                likegt::commands::hold2out::run_complete_hold2out_pipeline(
+                    &fasta,
+                    &graph,
+                    &output,
+                    &individual,
+                    hold,
+                    ploidy,
+                    threads,
+                    kmer_size,
+                    &simulator,
+                    read_length,
+                    coverage_depth,
+                    fragment_length,
+                    fragment_std,
+                    &aligner,
+                    &preset,
+                    keep_files,
+                    sequence_qv,
+                    verbose,
+                    &format,
+                ).await
+            }
         }
     }
 }
