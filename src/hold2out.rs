@@ -1,8 +1,8 @@
 use anyhow::{Result, Context};
-use std::path::Path;
+// use std::path::Path;
 use rayon::prelude::*;
 use indicatif::{ProgressBar, ProgressStyle};
-use crate::{io::CoverageData, math, sequence_qv};
+use crate::{io::CoverageData, math};
 
 #[derive(Debug, Clone)]
 pub struct Hold2OutResult {
@@ -179,7 +179,7 @@ pub fn compare_validation_methods(
     // For hold-2-out, we need to check if the called genotype is "close"
     // to the true genotype based on similarity
     let mut hold2_close_calls = 0;
-    let mut similarity_threshold = 0.95; // Consider "close" if similarity > 0.95
+    let similarity_threshold = 0.95; // Consider "close" if similarity > 0.95
     
     for result in &hold2_results {
         if result.similarity > similarity_threshold {

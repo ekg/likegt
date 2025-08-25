@@ -1,7 +1,7 @@
 use std::process::Command;
 use std::path::{Path, PathBuf};
 use anyhow::{Result, Context};
-use indicatif::{ProgressBar, ProgressStyle};
+// use indicatif::{ProgressBar, ProgressStyle};
 
 #[derive(Debug, Clone)]
 pub struct GraphBuilder {
@@ -216,7 +216,7 @@ pub struct GraphOutput {
 pub fn extract_sequences_without_paths(
     gfa_path: &Path,
     exclude_paths: &[String],
-    output_fasta: &Path,
+    _output_fasta: &Path,
 ) -> Result<()> {
     log::info!("Extracting sequences from graph, excluding {} paths", exclude_paths.len());
     

@@ -1,7 +1,7 @@
-use anyhow::{Result, Context};
+use anyhow::Result;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::Command;
+// use std::process::Command;
 use tokio::fs;
 
 #[derive(Debug, Clone)]
@@ -207,7 +207,7 @@ async fn parse_individuals_from_fasta(fasta_path: &PathBuf) -> Result<Vec<(Strin
 }
 
 async fn create_hold2out_graph(
-    original_graph: &PathBuf,
+    _original_graph: &PathBuf,
     fasta_path: &PathBuf,
     exclude_individual: &str,
 ) -> Result<PathBuf> {
@@ -259,10 +259,10 @@ async fn create_hold2out_graph(
 }
 
 async fn test_individual_genotyping(
-    graph_path: &PathBuf,
+    _graph_path: &PathBuf,
     individual_id: &str,
-    true_sequences: &[String],
-    reference_graph: &PathBuf,
+    _true_sequences: &[String],
+    _reference_graph: &PathBuf,
     _threads: usize,
 ) -> Result<IndividualResult> {
     // This is a placeholder for the actual genotyping test

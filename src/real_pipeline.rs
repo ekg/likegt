@@ -2,9 +2,9 @@
 /// This module ACTUALLY simulates reads and runs the full pipeline
 
 use std::process::Command;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::fs;
-use anyhow::{Result, Context};
+use anyhow::Result;
 use crate::{io::CoverageData, math};
 
 /// Calculate number of read pairs needed for target coverage

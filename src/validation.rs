@@ -1,6 +1,6 @@
-use crate::{io, math, coverage::GenotypeData};
+use crate::{io, math};
 use anyhow::Result;
-use std::collections::HashMap;
+// use std::collections::HashMap;
 
 /// Quality Value calculation for genotype calls
 /// QV = -10 * log10(error_probability)

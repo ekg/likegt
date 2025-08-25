@@ -46,7 +46,9 @@ struct NodeLengthStats {
 
 #[derive(Debug)]
 struct PathLengthStats {
+    #[allow(dead_code)]
     min: usize,
+    #[allow(dead_code)]
     max: usize,
     mean: f64,
     paths_per_sample: HashMap<String, usize>,

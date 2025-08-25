@@ -90,7 +90,7 @@ pub fn align_sequences_wfa(seq1: &str, seq2: &str) -> Result<SequenceQV> {
             
             let alignment_length = matches + mismatches + insertions + deletions;
             let edit_distance = mismatches + insertions + deletions;
-            let identity = matches as f64 / alignment_length.max(1) as f64;
+            let _identity = matches as f64 / alignment_length.max(1) as f64;
             
             Ok(SequenceQV::from_edit_distance(edit_distance, alignment_length))
         }

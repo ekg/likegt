@@ -6,9 +6,9 @@ pub mod graph;
 pub mod validation;
 pub mod sequence_qv;
 pub mod hold2out;
-pub mod real_pipeline;
-pub mod real_validation;
-pub mod align_coverage;
+// pub mod real_pipeline; // Currently unused  
+// pub mod real_validation; // Currently unused
+// pub mod align_coverage; // Currently unused
 pub mod commands;
 pub mod pipeline;
 

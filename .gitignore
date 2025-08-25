@@ -4,14 +4,31 @@ Cargo.lock
 
 # Test data
 *.fq
+*.fastq
 *.fa
 *.sam
 *.bam
 *.gaf
 *.paf
+*.gfa
 *.og
 *.png
 *.seq
+*.coverage.tsv
+*.coverage.tsv.gz
+*.tsv.gz
+*.amb
+*.ann
+*.bwt
+*.pac
+*.sa
+*.fai
+*.gzi
+
+# Keep essential input files
+!hla-f.fa.gz
+!tests/data/*.fa.gz
+!tests/data/*.gfa
 
 # Temp files
 test_seq*
@@ -33,7 +50,26 @@ __pycache__/
 .vscode/
 .idea/
 
-# Output
+# Output directories
 hold0_results/
 test_output/
 validate_results/
+test_*/
+k_scan_results/
+real_test/
+reference_bias_test/
+test_reference_coverage/
+test_complete_pipeline/
+test_direct/
+test_extraction/
+test_real_sim/
+test_k*/
+test_norm*/
+temp_gafpack/
+
+# Build/pipeline artifacts
+reduced_reference.fa
+graph_sequences.fa
+*_heldout.fa
+*.genotype.tsv
+*.sorted_combos.tsv.gz

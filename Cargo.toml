@@ -19,5 +19,6 @@ tempfile = "3.10"
 lib_wfa2 = { git = "https://github.com/ekg/lib_wfa2", rev = "819b82cd842aabedcb962fd5b82380fe454234f6" }
 bio = "1.4"
 tokio = { version = "1.0", features = ["full"] }
+chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]

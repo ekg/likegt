@@ -3,15 +3,183 @@ use std::path::Path;
 use std::process::Command;
 use tokio::fs;
 
-/// Build a pangenome graph from FASTA using allwave → seqwish → odgi pipeline
+/// Build pangenome graph(s) from FASTA using allwave + seqwish + odgi pipeline
+pub async fn build_graph_allwave_seqwish(
+    fasta_path: &str,
+    output_prefix: &str,
+    kmer_sizes: &str,
+    threads: usize,
+    pruning: &str,
+    visualize: bool,
+    keep_intermediates: bool,
+) -> Result<()> {
+    println!("Building graph(s) from FASTA: {}", fasta_path);
+    println!("K-mer sizes: {}", kmer_sizes);
+    println!("Threads: {}, Pruning: {}", threads, pruning);
+    
+    // Verify input file exists
+    if !Path::new(fasta_path).exists() {
+        return Err(anyhow::anyhow!("Input FASTA file not found: {}", fasta_path));
+    }
+    
+    // Parse k-mer sizes
+    let k_values: Vec<usize> = kmer_sizes
+        .split(',')
+        .map(|s| s.trim().parse().context("Invalid k-mer size"))
+        .collect::<Result<Vec<_>>>()?;
+    
+    println!("Parsed k-mer values: {:?}", k_values);
+    
+    // Step 1: Run allwave to generate PAF
+    println!("Step 1: Running allwave for sequence alignment...");
+    let base_name = Path::new(fasta_path).file_stem().unwrap().to_str().unwrap();
+    let paf_file = format!("{}.paf", base_name);
+    
+    let allwave_output = Command::new("allwave")
+        .args(&[
+            "-i", fasta_path,
+            "-t", &threads.to_string(),
+            "-p", pruning,
+        ])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::inherit()) // Show progress to user
+        .output()
+        .context("Failed to run allwave - is it installed?")?;
+    
+    if !allwave_output.status.success() {
+        return Err(anyhow::anyhow!("allwave failed: {}", String::from_utf8_lossy(&allwave_output.stderr)));
+    }
+    
+    // Write PAF output
+    fs::write(&paf_file, &allwave_output.stdout).await?;
+    println!("   Created PAF file: {}", paf_file);
+    
+    // Step 2-4: For each k-mer size, run seqwish + odgi sort + odgi view
+    for k in &k_values {
+        println!("Processing k-mer size: {}", k);
+        
+        let seqwish_gfa = format!("{}.seqwish-k{}.gfa", base_name, k);
+        let final_gfa = format!("{}.k{}.gfa", output_prefix, k);
+        
+        // Step 2: Run seqwish
+        println!("   Running seqwish with k={}", k);
+        let seqwish_status = Command::new("seqwish")
+            .args(&[
+                "-s", fasta_path,
+                "-g", &seqwish_gfa,
+                "-t", &threads.to_string(),
+                "-p", &paf_file,
+                "-k", &k.to_string(),
+                "-P", // Precise mode
+            ])
+            .stdout(std::process::Stdio::inherit()) // Show progress to user
+            .stderr(std::process::Stdio::inherit()) // Show progress to user
+            .status()
+            .context("Failed to run seqwish - is it installed?")?;
+        
+        if !seqwish_status.success() {
+            return Err(anyhow::anyhow!("seqwish failed for k={}", k));
+        }
+        
+        // Step 3: odgi sort with Ygs algorithm
+        println!("   Sorting graph with odgi");
+        let sort_output = Command::new("odgi")
+            .args(&[
+                "sort",
+                "-i", &seqwish_gfa,
+                "-p", "Ygs",
+                "-o", "-",
+            ])
+            .output()
+            .context("Failed to run odgi sort")?;
+        
+        if !sort_output.status.success() {
+            return Err(anyhow::anyhow!("odgi sort failed for k={}", k));
+        }
+        
+        // Step 4: odgi view to convert back to GFA  
+        println!("   Converting back to GFA");
+        let mut view_process = Command::new("odgi")
+            .args(&[
+                "view",
+                "-i", "-",
+                "-g",
+            ])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .context("Failed to spawn odgi view")?;
+        
+        // Write sorted graph data to odgi view stdin
+        if let Some(stdin) = view_process.stdin.take() {
+            use std::io::Write;
+            let mut stdin_handle = stdin;
+            stdin_handle.write_all(&sort_output.stdout)?;
+            stdin_handle.flush()?;
+        }
+        
+        let view_output = view_process.wait_with_output()
+            .context("Failed to wait for odgi view")?;
+        
+        if !view_output.status.success() {
+            return Err(anyhow::anyhow!("odgi view failed for k={}", k));
+        }
+        
+        // Write final GFA
+        fs::write(&final_gfa, &view_output.stdout).await?;
+        println!("   Created final GFA: {}", final_gfa);
+        
+        // Step 5: Optional visualization
+        if visualize {
+            println!("   Generating PNG visualization");
+            let png_file = format!("{}.k{}.gfa.png", output_prefix, k);
+            let viz_status = Command::new("odgi")
+                .args(&[
+                    "viz",
+                    "-m",
+                    "-i", &final_gfa,
+                    "-o", &png_file,
+                ])
+                .status()
+                .context("Failed to run odgi viz")?;
+            
+            if viz_status.success() {
+                println!("   Created visualization: {}", png_file);
+            } else {
+                println!("   Warning: odgi viz failed for k={}", k);
+            }
+        }
+        
+        // Clean up seqwish GFA if not keeping intermediates
+        if !keep_intermediates {
+            if let Err(e) = fs::remove_file(&seqwish_gfa).await {
+                println!("   Warning: failed to remove {}: {}", seqwish_gfa, e);
+            }
+        }
+    }
+    
+    // Clean up PAF file if not keeping intermediates
+    if !keep_intermediates {
+        if let Err(e) = fs::remove_file(&paf_file).await {
+            println!("   Warning: failed to remove {}: {}", paf_file, e);
+        }
+    } else {
+        println!("Kept intermediate PAF file: {}", paf_file);
+    }
+    
+    println!("Graph construction complete!");
+    Ok(())
+}
+
+/// Build a pangenome graph from FASTA using allwave → seqwish → odgi pipeline (legacy)
 pub async fn build_graph_from_fasta(
     fasta_path: &str,
     output_gfa: &str,
     kmer_size: usize,
-    segment_length: usize,
+    _segment_length: usize,
 ) -> Result<()> {
     log::info!("Building graph from FASTA: {}", fasta_path);
-    log::info!("K-mer size: {}, Segment length: {}", kmer_size, segment_length);
+    log::info!("K-mer size: {}", kmer_size);
     
     // Verify input file exists
     if !Path::new(fasta_path).exists() {

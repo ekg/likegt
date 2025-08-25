@@ -42,23 +42,110 @@ enum Commands {
         output: String,
     },
     
-    /// Build a pangenome graph from FASTA sequences
+    /// Build a pangenome graph from FASTA sequences using allwave + seqwish + odgi
     Build {
-        /// Input FASTA file
+        /// Input FASTA file (.fa, .fa.gz)
         #[arg(short, long)]
         fasta: String,
         
-        /// Output GFA file
+        /// Output GFA file (or prefix for multiple k-mer sizes)
         #[arg(short, long)]
         output: String,
+        
+        /// K-mer size for seqwish (or comma-separated list: 0,25,51,101)
+        #[arg(short, long, default_value = "51")]
+        kmer_sizes: String,
+        
+        /// Number of threads
+        #[arg(short, long, default_value = "8")]
+        threads: usize,
+        
+        /// Allwave pruning mode (none, low, medium, high)
+        #[arg(long, default_value = "none")]
+        pruning: String,
+        
+        /// Generate PNG visualizations with odgi viz
+        #[arg(long)]
+        visualize: bool,
+        
+        /// Keep intermediate files (PAF, seqwish GFA)
+        #[arg(long)]
+        keep_intermediates: bool,
+    },
+    
+    /// Run complete hold-2-out validation pipeline
+    Hold2Out {
+        /// Input FASTA sequences  
+        #[arg(short, long)]
+        fasta: String,
+        
+        /// Input graph file (.gfa or .og)
+        #[arg(short, long)]
+        graph: String,
+        
+        /// Output directory for results
+        #[arg(short, long, default_value = "hold2out_results")]
+        output: String,
+        
+        /// Test individual to hold out (e.g., "HG00096")
+        #[arg(short, long)]
+        individual: String,
+        
+        /// Ploidy (number of haplotypes per individual)
+        #[arg(short, long, default_value = "2")]
+        ploidy: usize,
+        
+        /// Number of threads
+        #[arg(short, long, default_value = "4")]
+        threads: usize,
         
         /// K-mer size
         #[arg(short, long, default_value = "51")]
         kmer_size: usize,
         
-        /// Segment length for pggb
-        #[arg(short, long, default_value = "10000")]
-        segment_length: usize,
+        /// Read simulator (wgsim, mason, pbsim3)
+        #[arg(long, default_value = "wgsim")]
+        simulator: String,
+        
+        /// Read length for simulation
+        #[arg(long, default_value = "150")]
+        read_length: usize,
+        
+        /// Coverage depth for read simulation
+        #[arg(long, default_value = "30")]
+        coverage_depth: usize,
+        
+        /// Fragment length mean (paired-end reads)
+        #[arg(long, default_value = "500")]
+        fragment_length: usize,
+        
+        /// Fragment length std dev
+        #[arg(long, default_value = "50")]
+        fragment_std: usize,
+        
+        /// Aligner (minimap2, bwa-mem, strobealign)
+        #[arg(long, default_value = "minimap2")]
+        aligner: String,
+        
+        /// Alignment preset (sr for short reads, map-ont for long reads)
+        #[arg(long, default_value = "sr")]
+        preset: String,
+        
+        /// Keep intermediate files
+        #[arg(long)]
+        keep_files: bool,
+        
+        /// Output sequence-level QV validation
+        #[arg(long)]
+        sequence_qv: bool,
+        
+        /// Verbose output
+        #[arg(short, long)]
+        verbose: bool,
+        
+        /// Output format (text, json, csv)
+        #[arg(long, default_value = "text")]
+        format: String,
     },
 }
 
@@ -82,12 +169,57 @@ async fn main() -> Result<()> {
             likegt::commands::check::check_graph_genotyping_suitability(&gfa, &output)
         }
         
-        Commands::Build { fasta, output, kmer_size, segment_length } => {
-            likegt::pipeline::build::build_graph_from_fasta(
+        Commands::Build { fasta, output, kmer_sizes, threads, pruning, visualize, keep_intermediates } => {
+            likegt::pipeline::build::build_graph_allwave_seqwish(
                 &fasta,
                 &output,
+                &kmer_sizes,
+                threads,
+                &pruning,
+                visualize,
+                keep_intermediates,
+            ).await
+        }
+        
+        Commands::Hold2Out { 
+            fasta,
+            graph,
+            output, 
+            individual, 
+            ploidy, 
+            threads, 
+            kmer_size,
+            simulator,
+            read_length,
+            coverage_depth,
+            fragment_length,
+            fragment_std,
+            aligner,
+            preset,
+            keep_files,
+            sequence_qv,
+            verbose,
+            format 
+        } => {
+            likegt::commands::hold2out::run_complete_hold2out_pipeline(
+                &fasta,
+                &graph,
+                &output,
+                &individual,
+                ploidy,
+                threads,
                 kmer_size,
-                segment_length,
+                &simulator,
+                read_length,
+                coverage_depth,
+                fragment_length,
+                fragment_std,
+                &aligner,
+                &preset,
+                keep_files,
+                sequence_qv,
+                verbose,
+                &format,
             ).await
         }
     }

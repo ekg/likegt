@@ -1,7 +1,7 @@
 use std::process::Command;
 use std::path::{Path, PathBuf};
 use std::fs;
-use std::io::{self, Write, BufRead, BufReader};
+// use std::io::{self, Write, BufRead, BufReader};
 use anyhow::{Result, Context};
 
 use crate::math::cosine_similarity;
