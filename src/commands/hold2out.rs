@@ -79,6 +79,8 @@ pub struct Hold2OutResult {
     pub reads_generated: usize,
     pub reads_aligned: usize,
     pub alignment_rate: f64,
+    pub reference_bias_applied: bool,
+    pub bias_fraction: f64,  // Fraction of reads filtered by reference bias
     pub execution_time_sec: f64,
     pub pipeline_stages: Vec<PipelineStage>,
 }
@@ -109,6 +111,8 @@ pub async fn run_batch_hold2out(
     aligner: &str,
     preset: &str,
     keep_files: bool,
+    reference_bias: bool,
+    bias_reference: Option<&str>,
     sequence_qv_enabled: bool,
     verbose: bool,
     output_format: &str,
@@ -128,9 +132,9 @@ pub async fn run_batch_hold2out(
     
     // Print header for table formats
     if output_format == "table" || output_format == "tsv" {
-        println!("sample\ttrue_hap1\ttrue_hap2\tcalled_hap1\tcalled_hap2\tsimilarity\tqv\talignment\ttime");
+        println!("sample\ttrue_hap1\ttrue_hap2\tcalled_hap1\tcalled_hap2\tsimilarity\tqv\talignment\tbias_loss\ttime");
     } else if output_format == "csv" {
-        println!("sample,true_hap1,true_hap2,called_hap1,called_hap2,similarity,qv,alignment,time");
+        println!("sample,true_hap1,true_hap2,called_hap1,called_hap2,similarity,qv,alignment,bias_loss,time");
     }
     
     let mut total_correct = 0;
@@ -158,6 +162,8 @@ pub async fn run_batch_hold2out(
             aligner,
             preset,
             keep_files,
+            reference_bias,
+            bias_reference,
             sequence_qv_enabled,
             batch_verbose,
             output_format,
@@ -229,6 +235,8 @@ pub async fn run_complete_hold2out_pipeline(
     aligner: &str,
     preset: &str,
     keep_files: bool,
+    reference_bias: bool,
+    bias_reference: Option<&str>,
     sequence_qv_enabled: bool,
     verbose: bool,
     output_format: &str,
@@ -310,6 +318,36 @@ pub async fn run_complete_hold2out_pipeline(
             reads_file_2.to_string_lossy().to_string(),
         ],
     });
+    
+    // Optional Stage 3.5: Apply reference bias filtering
+    let (reads_file_1, reads_file_2, num_reads, bias_fraction) = if reference_bias {
+        let stage_start = std::time::Instant::now();
+        if verbose { println!("🔬 Stage 3.5: Applying reference bias filtering"); }
+        
+        let (filtered_r1, filtered_r2, filtered_count, bias_frac) = apply_reference_bias(
+            &reads_file_1, &reads_file_2, fasta_file, bias_reference, 
+            &output_path, aligner, preset, threads, verbose
+        ).await?;
+        
+        pipeline_stages.push(PipelineStage {
+            name: "reference_bias_filtering".to_string(),
+            duration_sec: stage_start.elapsed().as_secs_f64(),
+            success: true,
+            output_files: vec![
+                filtered_r1.to_string_lossy().to_string(),
+                filtered_r2.to_string_lossy().to_string(),
+            ],
+        });
+        
+        if verbose { 
+            println!("   Filtered {} reads ({:.1}% removed by bias)", 
+                     filtered_count, bias_frac * 100.0);
+        }
+        
+        (filtered_r1, filtered_r2, filtered_count, bias_frac)
+    } else {
+        (reads_file_1, reads_file_2, num_reads, 0.0)
+    };
     
     // Stage 4: Align reads to graph
     let stage_start = std::time::Instant::now();
@@ -420,6 +458,8 @@ pub async fn run_complete_hold2out_pipeline(
         reads_generated: num_reads,
         reads_aligned: num_aligned,
         alignment_rate,
+        reference_bias_applied: reference_bias,
+        bias_fraction,
         execution_time_sec: execution_time,
         pipeline_stages,
     };
@@ -741,6 +781,140 @@ async fn simulate_reads(
         }
         _ => Err(anyhow::anyhow!("Unknown simulator: {}", simulator))
     }
+}
+
+async fn apply_reference_bias(
+    reads_file_1: &Path,
+    reads_file_2: &Path,
+    fasta_file: &str,
+    bias_reference: Option<&str>,
+    output_path: &Path,
+    aligner: &str,
+    preset: &str,
+    threads: usize,
+    verbose: bool,
+) -> Result<(PathBuf, PathBuf, usize, f64)> {
+    // First align to reference to identify which reads align well
+    let reference_to_use = if let Some(ref_seq) = bias_reference {
+        // Use specified reference sequence
+        // TODO: Extract specific sequence from FASTA
+        PathBuf::from(fasta_file)
+    } else {
+        // Use full FASTA as reference
+        PathBuf::from(fasta_file)
+    };
+    
+    if verbose { 
+        println!("   Aligning to reference: {}", reference_to_use.display());
+    }
+    
+    // Align reads to reference
+    let sam_file = output_path.join("bias_filter.sam");
+    let output = Command::new("minimap2")
+        .args(&[
+            "-ax", preset,
+            "-t", &threads.to_string(),
+            "--secondary=no",
+            reference_to_use.to_str().unwrap(),
+            reads_file_1.to_str().unwrap(),
+            reads_file_2.to_str().unwrap(),
+        ])
+        .output()?;
+    
+    if !output.status.success() {
+        return Err(anyhow::anyhow!("Reference alignment for bias failed"));
+    }
+    
+    fs::write(&sam_file, output.stdout).await?;
+    
+    // Parse SAM to get aligned read names
+    let sam_content = fs::read_to_string(&sam_file).await?;
+    let mut aligned_reads = HashSet::new();
+    
+    for line in sam_content.lines() {
+        if line.starts_with('@') || line.is_empty() {
+            continue;
+        }
+        
+        let fields: Vec<&str> = line.split('\t').collect();
+        if fields.len() > 2 && fields[2] != "*" {
+            // Read aligned to reference
+            aligned_reads.insert(fields[0].to_string());
+        }
+    }
+    
+    if verbose {
+        println!("   {} reads aligned to reference", aligned_reads.len());
+    }
+    
+    // Filter original FASTQ files to keep only aligned reads
+    let filtered_r1 = output_path.join("filtered_reads_1.fq");
+    let filtered_r2 = output_path.join("filtered_reads_2.fq");
+    
+    let r1_content = fs::read_to_string(reads_file_1).await?;
+    let r2_content = fs::read_to_string(reads_file_2).await?;
+    
+    let mut filtered_r1_content = String::new();
+    let mut filtered_r2_content = String::new();
+    let mut kept_count = 0;
+    let mut total_count = 0;
+    
+    // Process R1
+    let mut lines = r1_content.lines();
+    while let Some(header) = lines.next() {
+        let seq = lines.next().unwrap_or("");
+        let plus = lines.next().unwrap_or("");
+        let qual = lines.next().unwrap_or("");
+        
+        total_count += 1;
+        
+        // Extract read name (remove /1 or /2 suffix)
+        let read_name = header[1..].split_whitespace().next().unwrap_or("")
+            .trim_end_matches("/1").trim_end_matches("/2");
+        
+        if aligned_reads.contains(read_name) {
+            filtered_r1_content.push_str(header);
+            filtered_r1_content.push('\n');
+            filtered_r1_content.push_str(seq);
+            filtered_r1_content.push('\n');
+            filtered_r1_content.push_str(plus);
+            filtered_r1_content.push('\n');
+            filtered_r1_content.push_str(qual);
+            filtered_r1_content.push('\n');
+            kept_count += 1;
+        }
+    }
+    
+    // Process R2 similarly
+    let mut lines = r2_content.lines();
+    while let Some(header) = lines.next() {
+        let seq = lines.next().unwrap_or("");
+        let plus = lines.next().unwrap_or("");
+        let qual = lines.next().unwrap_or("");
+        
+        let read_name = header[1..].split_whitespace().next().unwrap_or("")
+            .trim_end_matches("/1").trim_end_matches("/2");
+        
+        if aligned_reads.contains(read_name) {
+            filtered_r2_content.push_str(header);
+            filtered_r2_content.push('\n');
+            filtered_r2_content.push_str(seq);
+            filtered_r2_content.push('\n');
+            filtered_r2_content.push_str(plus);
+            filtered_r2_content.push('\n');
+            filtered_r2_content.push_str(qual);
+            filtered_r2_content.push('\n');
+        }
+    }
+    
+    fs::write(&filtered_r1, filtered_r1_content).await?;
+    fs::write(&filtered_r2, filtered_r2_content).await?;
+    
+    let bias_fraction = 1.0 - (kept_count as f64 / total_count as f64);
+    
+    // Return filtered files and counts
+    // Note: kept_count * 2 because we have paired-end reads
+    Ok((filtered_r1, filtered_r2, kept_count * 2, bias_fraction))
 }
 
 async fn align_reads_to_graph(
@@ -1331,7 +1505,7 @@ async fn output_pipeline_results(
         "table" | "tsv" => {
             // Tab-separated format for easy parsing
             println!(
-                "{}\t{}\t{}\t{}\t{}\t{:.4}\t{:.1}\t{:.1}%\t{:.2}s",
+                "{}\t{}\t{}\t{}\t{}\t{:.4}\t{:.1}\t{:.1}%\t{:.1}%\t{:.2}s",
                 result.test_individual,
                 result.true_genotype.0,
                 result.true_genotype.1,
@@ -1340,13 +1514,14 @@ async fn output_pipeline_results(
                 result.cosine_similarity,
                 result.graph_qv,
                 result.alignment_rate * 100.0,
+                result.bias_fraction * 100.0,
                 result.execution_time_sec
             );
         }
         "csv" => {
             // CSV format
             println!(
-                "{},{},{},{},{},{:.4},{:.1},{:.1},{:.2}",
+                "{},{},{},{},{},{:.4},{:.1},{:.1},{:.1},{:.2}",
                 result.test_individual,
                 result.true_genotype.0,
                 result.true_genotype.1,
@@ -1355,6 +1530,7 @@ async fn output_pipeline_results(
                 result.cosine_similarity,
                 result.graph_qv,
                 result.alignment_rate * 100.0,
+                result.bias_fraction * 100.0,
                 result.execution_time_sec
             );
         }

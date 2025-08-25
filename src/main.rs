@@ -88,7 +88,7 @@ enum Commands {
         output: String,
         
         /// Test individual to hold out (e.g., "HG00096" or "all" for all samples)
-        #[arg(short, long)]
+        #[arg(short, long, default_value = "all")]
         individual: String,
         
         /// Number of haplotypes to hold out (1 or 2)
@@ -138,6 +138,14 @@ enum Commands {
         /// Keep intermediate files
         #[arg(long)]
         keep_files: bool,
+        
+        /// Apply reference bias (pre-filter reads by alignment to reference)
+        #[arg(long)]
+        reference_bias: bool,
+        
+        /// Reference sequence for bias filtering (default: use first in FASTA)
+        #[arg(long)]
+        bias_reference: Option<String>,
         
         /// Output sequence-level QV validation
         #[arg(long)]
@@ -202,6 +210,8 @@ async fn main() -> Result<()> {
             aligner,
             preset,
             keep_files,
+            reference_bias,
+            bias_reference,
             sequence_qv,
             verbose,
             format 
@@ -225,6 +235,8 @@ async fn main() -> Result<()> {
                     &aligner,
                     &preset,
                     keep_files,
+                    reference_bias,
+                    bias_reference.as_deref(),
                     sequence_qv,
                     verbose,
                     &format,
@@ -247,6 +259,8 @@ async fn main() -> Result<()> {
                     &aligner,
                     &preset,
                     keep_files,
+                    reference_bias,
+                    bias_reference.as_deref(),
                     sequence_qv,
                     verbose,
                     &format,
