@@ -143,7 +143,8 @@ enum Commands {
         #[arg(long)]
         reference_bias: bool,
         
-        /// Reference sequence for bias filtering (default: use first in FASTA)
+        /// Reference sequence prefix for bias filtering (e.g., "CHM13" or "GRCh38")
+        /// If not specified, uses the first sequence in the FASTA
         #[arg(long)]
         bias_reference: Option<String>,
         
