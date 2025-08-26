@@ -1,0 +1,33 @@
+=== COMPLETE HOLD-2-OUT PIPELINE RESULTS ===
+Test Individual: NA20847
+Called Genotype: HG02492#2#haplotype2-0000133:142811187-142835275 + HG03452#2#haplotype2-0000134:29758104-29782171
+Cosine Similarity: 0.999359
+Rank: 1
+Correct: true
+Graph QV: 31.93
+
+=== READ SIMULATION & ALIGNMENT ===
+Reads Generated: 9630
+Reads Aligned: 9630
+Alignment Rate: 100.0%
+
+=== GENOTYPING PERFORMANCE ===
+Total Combinations: 8778
+Reference Haplotypes: 132
+Graph Nodes: 1009
+
+=== PIPELINE CONFIGURATION ===
+FASTA: hla-f.fa.gz
+Graph: hla-f.k51.gfa
+Simulator: wgsim (150bp, 30x coverage)
+Aligner: minimap2 (preset: sr)
+Threads: 4
+
+=== EXECUTION TIMELINE ===
+Total Time: 1.19s
+sequence_extraction: 0.02s ✅
+reference_coverage: 0.00s ✅
+read_simulation: 0.02s ✅
+read_alignment: 0.69s ✅
+sample_coverage: 0.02s ✅
+genotyping: 0.43s ✅

@@ -1,0 +1,33 @@
+=== COMPLETE HOLD-2-OUT PIPELINE RESULTS ===
+Test Individual: HG00268
+Called Genotype: HG00732#1#haplotype1-0000005:29696275-29720347 + NA19129#1#haplotype1-0000005:29716901-29740981
+Cosine Similarity: 0.996848
+Rank: 1
+Correct: true
+Graph QV: 25.01
+
+=== READ SIMULATION & ALIGNMENT ===
+Reads Generated: 10196
+Reads Aligned: 10196
+Alignment Rate: 100.0%
+
+=== GENOTYPING PERFORMANCE ===
+Total Combinations: 8778
+Reference Haplotypes: 132
+Graph Nodes: 1009
+
+=== PIPELINE CONFIGURATION ===
+FASTA: hla-f.fa.gz
+Graph: hla-f.k51.gfa
+Simulator: wgsim (150bp, 30x coverage)
+Aligner: minimap2 (preset: sr)
+Threads: 4
+
+=== EXECUTION TIMELINE ===
+Total Time: 1.26s
+sequence_extraction: 0.03s ✅
+reference_coverage: 0.00s ✅
+read_simulation: 0.02s ✅
+read_alignment: 0.76s ✅
+sample_coverage: 0.02s ✅
+genotyping: 0.43s ✅

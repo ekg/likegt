@@ -1,0 +1,33 @@
+=== COMPLETE HOLD-2-OUT PIPELINE RESULTS ===
+Test Individual: HG00096
+Called Genotype: HG00864#2#haplotype2-0000075:30139766-30164019 + HG02018#2#haplotype2-0000094:29730378-29754450
+Cosine Similarity: 0.999424
+Rank: 1
+Correct: true
+Graph QV: 32.40
+
+=== READ SIMULATION & ALIGNMENT ===
+Reads Generated: 4850
+Reads Aligned: 4850
+Alignment Rate: 100.0%
+
+=== GENOTYPING PERFORMANCE ===
+Total Combinations: 8778
+Reference Haplotypes: 132
+Graph Nodes: 1009
+
+=== PIPELINE CONFIGURATION ===
+FASTA: hla-f.fa.gz
+Graph: hla-f.k51.gfa
+Simulator: wgsim (150bp, 30x coverage)
+Aligner: minimap2 (preset: sr)
+Threads: 4
+
+=== EXECUTION TIMELINE ===
+Total Time: 0.93s
+sequence_extraction: 0.03s ✅
+reference_coverage: 0.00s ✅
+read_simulation: 0.01s ✅
+read_alignment: 0.44s ✅
+sample_coverage: 0.02s ✅
+genotyping: 0.43s ✅

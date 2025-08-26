@@ -1,0 +1,33 @@
+=== COMPLETE HOLD-2-OUT PIPELINE RESULTS ===
+Test Individual: grch38
+Called Genotype: HG04036#2#haplotype2-0000080:29706240-29730303 + NA19650#2#haplotype2-0000070:29743928-29770661
+Cosine Similarity: 0.998660
+Rank: 1
+Correct: true
+Graph QV: 28.73
+
+=== READ SIMULATION & ALIGNMENT ===
+Reads Generated: 5342
+Reads Aligned: 5342
+Alignment Rate: 100.0%
+
+=== GENOTYPING PERFORMANCE ===
+Total Combinations: 8778
+Reference Haplotypes: 132
+Graph Nodes: 1009
+
+=== PIPELINE CONFIGURATION ===
+FASTA: hla-f.fa.gz
+Graph: hla-f.k51.gfa
+Simulator: wgsim (150bp, 30x coverage)
+Aligner: minimap2 (preset: sr)
+Threads: 4
+
+=== EXECUTION TIMELINE ===
+Total Time: 0.94s
+sequence_extraction: 0.03s ✅
+reference_coverage: 0.00s ✅
+read_simulation: 0.01s ✅
+read_alignment: 0.46s ✅
+sample_coverage: 0.02s ✅
+genotyping: 0.43s ✅

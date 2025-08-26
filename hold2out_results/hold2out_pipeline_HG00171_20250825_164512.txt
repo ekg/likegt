@@ -1,0 +1,33 @@
+=== COMPLETE HOLD-2-OUT PIPELINE RESULTS ===
+Test Individual: HG00171
+Called Genotype: HG00171#2#haplotype2-0000168:142352281-142376370 + HG00512#2#haplotype2-0000279:141716047-141740119
+Cosine Similarity: 0.998698
+Rank: 1
+Correct: true
+Graph QV: 28.85
+
+=== READ SIMULATION & ALIGNMENT ===
+Reads Generated: 9634
+Reads Aligned: 9634
+Alignment Rate: 100.0%
+
+=== GENOTYPING PERFORMANCE ===
+Total Combinations: 8778
+Reference Haplotypes: 132
+Graph Nodes: 1009
+
+=== PIPELINE CONFIGURATION ===
+FASTA: hla-f.fa.gz
+Graph: hla-f.k51.gfa
+Simulator: wgsim (150bp, 30x coverage)
+Aligner: minimap2 (preset: sr)
+Threads: 4
+
+=== EXECUTION TIMELINE ===
+Total Time: 1.19s
+sequence_extraction: 0.02s ✅
+reference_coverage: 0.00s ✅
+read_simulation: 0.02s ✅
+read_alignment: 0.70s ✅
+sample_coverage: 0.02s ✅
+genotyping: 0.43s ✅

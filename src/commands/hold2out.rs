@@ -111,7 +111,6 @@ pub async fn run_batch_hold2out(
     aligner: &str,
     preset: &str,
     keep_files: bool,
-    reference_bias: bool,
     bias_reference: Option<&str>,
     sequence_qv_enabled: bool,
     verbose: bool,
@@ -162,7 +161,6 @@ pub async fn run_batch_hold2out(
             aligner,
             preset,
             keep_files,
-            reference_bias,
             bias_reference,
             sequence_qv_enabled,
             batch_verbose,
@@ -235,7 +233,6 @@ pub async fn run_complete_hold2out_pipeline(
     aligner: &str,
     preset: &str,
     keep_files: bool,
-    reference_bias: bool,
     bias_reference: Option<&str>,
     sequence_qv_enabled: bool,
     verbose: bool,
@@ -320,7 +317,7 @@ pub async fn run_complete_hold2out_pipeline(
     });
     
     // Optional Stage 3.5: Apply reference bias filtering
-    let (reads_file_1, reads_file_2, num_reads, bias_fraction) = if reference_bias {
+    let (reads_file_1, reads_file_2, num_reads, bias_fraction) = if bias_reference.is_some() {
         let stage_start = std::time::Instant::now();
         if verbose { println!("🔬 Stage 3.5: Applying reference bias filtering"); }
         
@@ -458,7 +455,7 @@ pub async fn run_complete_hold2out_pipeline(
         reads_generated: num_reads,
         reads_aligned: num_aligned,
         alignment_rate,
-        reference_bias_applied: reference_bias,
+        reference_bias_applied: bias_reference.is_some(),
         bias_fraction,
         execution_time_sec: execution_time,
         pipeline_stages,

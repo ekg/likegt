@@ -139,12 +139,8 @@ enum Commands {
         #[arg(long)]
         keep_files: bool,
         
-        /// Apply reference bias (pre-filter reads by alignment to reference)
-        #[arg(long)]
-        reference_bias: bool,
-        
         /// Reference sequence prefix for bias filtering (e.g., "CHM13" or "GRCh38")
-        /// If not specified, uses the first sequence in the FASTA
+        /// When specified, applies reference bias by pre-filtering reads
         #[arg(long)]
         bias_reference: Option<String>,
         
@@ -211,7 +207,6 @@ async fn main() -> Result<()> {
             aligner,
             preset,
             keep_files,
-            reference_bias,
             bias_reference,
             sequence_qv,
             verbose,
@@ -236,7 +231,6 @@ async fn main() -> Result<()> {
                     &aligner,
                     &preset,
                     keep_files,
-                    reference_bias,
                     bias_reference.as_deref(),
                     sequence_qv,
                     verbose,
@@ -260,7 +254,6 @@ async fn main() -> Result<()> {
                     &aligner,
                     &preset,
                     keep_files,
-                    reference_bias,
                     bias_reference.as_deref(),
                     sequence_qv,
                     verbose,
