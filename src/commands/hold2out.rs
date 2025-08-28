@@ -930,54 +930,72 @@ async fn apply_reference_bias(
     threads: usize,
     verbose: bool,
 ) -> Result<(PathBuf, PathBuf, usize, f64)> {
-    // Extract the reference sequence to use for bias
+    // Determine the reference sequence to use for bias
     let reference_to_use = if let Some(ref_prefix) = bias_reference {
-        // Extract specific reference sequence(s) matching the prefix
-        let ref_fasta = output_path.join("bias_reference.fa");
-        
-        if verbose { 
-            println!("   Extracting reference sequences matching: {}", ref_prefix);
-        }
-        
-        // Extract sequences matching the prefix
-        let cmd = if fasta_file.ends_with(".gz") {
-            Command::new("sh")
-                .arg("-c")
-                .arg(format!(
-                    "zcat {} | awk 'BEGIN {{RS=\">\"}} /^{}/ {{print \">\"$0}}'",
-                    fasta_file, ref_prefix
-                ))
-                .output()?
+        if ref_prefix == "grch38" {
+            // Enhanced GRCh38 bias: use full chromosome reference
+            let grch38_ref = Path::new("grch38_chr6_pansn.fa.gz");
+            
+            if !grch38_ref.exists() {
+                return Err(anyhow::anyhow!(
+                    "GRCh38 reference not found: {}. Please ensure grch38_chr6_pansn.fa.gz exists in the current directory.",
+                    grch38_ref.display()
+                ));
+            }
+            
+            if verbose {
+                println!("   Using enhanced GRCh38 bias: full chr6 reference ({} bp)", 170_805_979);
+            }
+            
+            grch38_ref.to_path_buf()
         } else {
-            Command::new("sh")
-                .arg("-c")
-                .arg(format!(
-                    "awk 'BEGIN {{RS=\">\"}} /^{}/ {{print \">\"$0}}' {}",
-                    ref_prefix, fasta_file
-                ))
-                .output()?
-        };
-        
-        if !cmd.status.success() || cmd.stdout.is_empty() {
-            return Err(anyhow::anyhow!(
-                "No reference sequences found matching prefix: {}", ref_prefix
-            ));
+            // Legacy behavior: extract specific reference sequence(s) matching the prefix
+            let ref_fasta = output_path.join("bias_reference.fa");
+            
+            if verbose { 
+                println!("   Extracting reference sequences matching: {}", ref_prefix);
+            }
+            
+            // Extract sequences matching the prefix
+            let cmd = if fasta_file.ends_with(".gz") {
+                Command::new("sh")
+                    .arg("-c")
+                    .arg(format!(
+                        "zcat {} | awk 'BEGIN {{RS=\">\"}} /^{}/ {{print \">\"$0}}'",
+                        fasta_file, ref_prefix
+                    ))
+                    .output()?
+            } else {
+                Command::new("sh")
+                    .arg("-c")
+                    .arg(format!(
+                        "awk 'BEGIN {{RS=\">\"}} /^{}/ {{print \">\"$0}}' {}",
+                        ref_prefix, fasta_file
+                    ))
+                    .output()?
+            };
+            
+            if !cmd.status.success() || cmd.stdout.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "No reference sequences found matching prefix: {}", ref_prefix
+                ));
+            }
+            
+            let ref_sequences = cmd.stdout;
+            
+            if verbose {
+                // Count sequences extracted
+                let seq_count = String::from_utf8_lossy(&ref_sequences)
+                    .lines()
+                    .filter(|l| l.starts_with('>'))
+                    .count();
+                println!("   Extracted {} reference sequence(s)", seq_count);
+            }
+            
+            fs::write(&ref_fasta, ref_sequences).await?;
+            
+            ref_fasta
         }
-        
-        let ref_sequences = cmd.stdout;
-        
-        if verbose {
-            // Count sequences extracted
-            let seq_count = String::from_utf8_lossy(&ref_sequences)
-                .lines()
-                .filter(|l| l.starts_with('>'))
-                .count();
-            println!("   Extracted {} reference sequence(s)", seq_count);
-        }
-        
-        fs::write(&ref_fasta, ref_sequences).await?;
-        
-        ref_fasta
     } else {
         // Default to using first sequence in FASTA as reference
         let ref_fasta = output_path.join("bias_reference.fa");
