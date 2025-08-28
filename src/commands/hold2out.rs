@@ -112,6 +112,7 @@ pub async fn run_batch_hold2out(
     preset: &str,
     keep_files: bool,
     bias_reference: Option<&str>,
+    global_bias_reference: Option<&str>,
     sequence_qv_enabled: bool,
     verbose: bool,
     output_format: &str,
@@ -160,6 +161,7 @@ pub async fn run_batch_hold2out(
             preset,
             keep_files,
             bias_reference,
+            global_bias_reference,
             sequence_qv_enabled,
             batch_verbose,
             output_format,
@@ -232,6 +234,7 @@ pub async fn run_complete_hold2out_pipeline(
     preset: &str,
     keep_files: bool,
     bias_reference: Option<&str>,
+    global_bias_reference: Option<&str>,
     sequence_qv_enabled: bool,
     verbose: bool,
     output_format: &str,
@@ -315,12 +318,12 @@ pub async fn run_complete_hold2out_pipeline(
     });
     
     // Optional Stage 4.5: Apply reference bias filtering
-    let (reads_file_1, reads_file_2, num_reads, bias_fraction) = if bias_reference.is_some() {
+    let (reads_file_1, reads_file_2, num_reads, bias_fraction) = if bias_reference.is_some() || global_bias_reference.is_some() {
         let stage_start = std::time::Instant::now();
         if verbose { println!("🔬 Stage 4.5: Applying reference bias filtering"); }
         
         let (filtered_r1, filtered_r2, filtered_count, bias_frac) = apply_reference_bias(
-            &reads_file_1, &reads_file_2, fasta_file, bias_reference, 
+            &reads_file_1, &reads_file_2, fasta_file, bias_reference, global_bias_reference,
             &output_path, aligner, preset, threads, verbose
         ).await?;
         
@@ -924,111 +927,81 @@ async fn apply_reference_bias(
     reads_file_2: &Path,
     fasta_file: &str,
     bias_reference: Option<&str>,
+    global_bias_reference: Option<&str>,
     output_path: &Path,
     aligner: &str,
     preset: &str,
     threads: usize,
     verbose: bool,
 ) -> Result<(PathBuf, PathBuf, usize, f64)> {
-    // Determine the reference sequence to use for bias
-    let reference_to_use = if let Some(ref_prefix) = bias_reference {
-        if ref_prefix == "grch38" {
-            // Enhanced GRCh38 bias: use full chromosome reference
-            let grch38_ref = Path::new("grch38_chr6_pansn.fa.gz");
-            
-            if !grch38_ref.exists() {
-                return Err(anyhow::anyhow!(
-                    "GRCh38 reference not found: {}. Please ensure grch38_chr6_pansn.fa.gz exists in the current directory.",
-                    grch38_ref.display()
-                ));
-            }
-            
-            if verbose {
-                println!("   Using enhanced GRCh38 bias: full chr6 reference ({} bp)", 170_805_979);
-            }
-            
-            grch38_ref.to_path_buf()
-        } else {
-            // Legacy behavior: extract specific reference sequence(s) matching the prefix
-            let ref_fasta = output_path.join("bias_reference.fa");
-            
-            if verbose { 
-                println!("   Extracting reference sequences matching: {}", ref_prefix);
-            }
-            
-            // Extract sequences matching the prefix
-            let cmd = if fasta_file.ends_with(".gz") {
-                Command::new("sh")
-                    .arg("-c")
-                    .arg(format!(
-                        "zcat {} | awk 'BEGIN {{RS=\">\"}} /^{}/ {{print \">\"$0}}'",
-                        fasta_file, ref_prefix
-                    ))
-                    .output()?
-            } else {
-                Command::new("sh")
-                    .arg("-c")
-                    .arg(format!(
-                        "awk 'BEGIN {{RS=\">\"}} /^{}/ {{print \">\"$0}}' {}",
-                        ref_prefix, fasta_file
-                    ))
-                    .output()?
-            };
-            
-            if !cmd.status.success() || cmd.stdout.is_empty() {
-                return Err(anyhow::anyhow!(
-                    "No reference sequences found matching prefix: {}", ref_prefix
-                ));
-            }
-            
-            let ref_sequences = cmd.stdout;
-            
-            if verbose {
-                // Count sequences extracted
-                let seq_count = String::from_utf8_lossy(&ref_sequences)
-                    .lines()
-                    .filter(|l| l.starts_with('>'))
-                    .count();
-                println!("   Extracted {} reference sequence(s)", seq_count);
-            }
-            
-            fs::write(&ref_fasta, ref_sequences).await?;
-            
-            ref_fasta
+    // Determine which bias type to use
+    let reference_to_use = if let Some(global_ref) = global_bias_reference {
+        // Global bias: use provided global reference file
+        let global_ref_path = Path::new(global_ref);
+        
+        if !global_ref_path.exists() {
+            return Err(anyhow::anyhow!(
+                "Global bias reference not found: {}",
+                global_ref_path.display()
+            ));
         }
-    } else {
-        // Default to using first sequence in FASTA as reference
-        let ref_fasta = output_path.join("bias_reference.fa");
+        
+        if verbose {
+            println!("   Using global bias reference: {}", global_ref_path.display());
+        }
+        
+        global_ref_path.to_path_buf()
+    } else if let Some(ref_prefix) = bias_reference {
+        // Local bias: extract sequences matching prefix from pangenome FASTA
+        let ref_fasta = output_path.join("local_bias_reference.fa");
         
         if verbose { 
-            println!("   Using first sequence as reference (no prefix specified)");
+            println!("   Using local bias, extracting sequences matching: {}", ref_prefix);
         }
         
-        // Extract first sequence
+        // Extract sequences matching the prefix
         let cmd = if fasta_file.ends_with(".gz") {
             Command::new("sh")
                 .arg("-c")
                 .arg(format!(
-                    "zcat {} | awk 'BEGIN {{RS=\">\"}} NR==2 {{print \">\"$0; exit}}'",
-                    fasta_file
+                    "zcat {} | awk 'BEGIN {{RS=\">\"}} /^{}/ {{print \">\"$0}}'",
+                    fasta_file, ref_prefix
                 ))
                 .output()?
         } else {
             Command::new("sh")
                 .arg("-c")
                 .arg(format!(
-                    "awk 'BEGIN {{RS=\">\"}} NR==2 {{print \">\"$0; exit}}' {}",
-                    fasta_file
+                    "awk 'BEGIN {{RS=\">\"}} /^{}/ {{print \">\"$0}}' {}",
+                    ref_prefix, fasta_file
                 ))
                 .output()?
         };
         
         if !cmd.status.success() || cmd.stdout.is_empty() {
-            return Err(anyhow::anyhow!("Could not extract reference sequence"));
+            return Err(anyhow::anyhow!(
+                "No reference sequences found matching prefix: {}", ref_prefix
+            ));
         }
         
-        fs::write(&ref_fasta, cmd.stdout).await?;
+        let ref_sequences = cmd.stdout;
+        
+        if verbose {
+            // Count sequences extracted
+            let seq_count = String::from_utf8_lossy(&ref_sequences)
+                .lines()
+                .filter(|l| l.starts_with('>'))
+                .count();
+            println!("   Extracted {} local reference sequence(s)", seq_count);
+        }
+        
+        fs::write(&ref_fasta, ref_sequences).await?;
+        
         ref_fasta
+    } else {
+        return Err(anyhow::anyhow!(
+            "Neither global_bias_reference nor bias_reference specified for bias filtering"
+        ));
     };
     
     if verbose { 

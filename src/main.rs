@@ -139,10 +139,15 @@ enum Commands {
         #[arg(long)]
         keep_files: bool,
         
-        /// Reference sequence prefix for bias filtering (e.g., "CHM13" or "GRCh38")
-        /// When specified, applies reference bias by pre-filtering reads
+        /// Reference sequence prefix for local bias filtering (extracts from pangenome FASTA)
+        /// e.g., "CHM13" or "grch38" - filters reads that align to sequences matching prefix
         #[arg(long)]
         bias_reference: Option<String>,
+        
+        /// Path to global reference genome for bias filtering (e.g., grch38_chr6_pansn.fa.gz)
+        /// Uses complete reference genome for initial alignment before filtering
+        #[arg(long)]
+        global_bias_reference: Option<String>,
         
         /// Output sequence-level QV validation
         #[arg(long)]
@@ -208,6 +213,7 @@ async fn main() -> Result<()> {
             preset,
             keep_files,
             bias_reference,
+            global_bias_reference,
             sequence_qv,
             verbose,
             format 
@@ -232,6 +238,7 @@ async fn main() -> Result<()> {
                     &preset,
                     keep_files,
                     bias_reference.as_deref(),
+                    global_bias_reference.as_deref(),
                     sequence_qv,
                     verbose,
                     &format,
@@ -255,6 +262,7 @@ async fn main() -> Result<()> {
                     &preset,
                     keep_files,
                     bias_reference.as_deref(),
+                    global_bias_reference.as_deref(),
                     sequence_qv,
                     verbose,
                     &format,
