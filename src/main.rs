@@ -139,15 +139,15 @@ enum Commands {
         #[arg(long)]
         keep_files: bool,
         
-        /// Reference sequence prefix for local bias filtering (extracts from pangenome FASTA)
-        /// e.g., "CHM13" or "grch38" - filters reads that align to sequences matching prefix
+        /// Extract sequences matching prefix from pangenome FASTA for bias filtering
+        /// e.g., "CHM13" or "grch38" - filters reads that align to sequences matching prefix  
         #[arg(long)]
-        bias_reference: Option<String>,
+        bias_prefix: Option<String>,
         
-        /// Path to global reference genome for bias filtering (e.g., grch38_chr6_pansn.fa.gz)
-        /// Uses complete reference genome for initial alignment before filtering
+        /// External reference FASTA file for bias filtering (e.g., grch38_chr6_pansn.fa.gz)
+        /// Uses complete reference FASTA file for initial alignment before filtering
         #[arg(long)]
-        global_bias_reference: Option<String>,
+        bias_fasta: Option<String>,
         
         /// Output sequence-level QV validation
         #[arg(long)]
@@ -212,8 +212,8 @@ async fn main() -> Result<()> {
             aligner,
             preset,
             keep_files,
-            bias_reference,
-            global_bias_reference,
+            bias_prefix,
+            bias_fasta,
             sequence_qv,
             verbose,
             format 
@@ -237,8 +237,8 @@ async fn main() -> Result<()> {
                     &aligner,
                     &preset,
                     keep_files,
-                    bias_reference.as_deref(),
-                    global_bias_reference.as_deref(),
+                    bias_prefix.as_deref(),
+                    bias_fasta.as_deref(),
                     sequence_qv,
                     verbose,
                     &format,
@@ -261,8 +261,8 @@ async fn main() -> Result<()> {
                     &aligner,
                     &preset,
                     keep_files,
-                    bias_reference.as_deref(),
-                    global_bias_reference.as_deref(),
+                    bias_prefix.as_deref(),
+                    bias_fasta.as_deref(),
                     sequence_qv,
                     verbose,
                     &format,

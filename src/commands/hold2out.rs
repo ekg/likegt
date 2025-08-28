@@ -111,8 +111,8 @@ pub async fn run_batch_hold2out(
     aligner: &str,
     preset: &str,
     keep_files: bool,
-    bias_reference: Option<&str>,
-    global_bias_reference: Option<&str>,
+    bias_prefix: Option<&str>,
+    bias_fasta: Option<&str>,
     sequence_qv_enabled: bool,
     verbose: bool,
     output_format: &str,
@@ -160,8 +160,8 @@ pub async fn run_batch_hold2out(
             aligner,
             preset,
             keep_files,
-            bias_reference,
-            global_bias_reference,
+            bias_prefix,
+            bias_fasta,
             sequence_qv_enabled,
             batch_verbose,
             output_format,
@@ -233,8 +233,8 @@ pub async fn run_complete_hold2out_pipeline(
     aligner: &str,
     preset: &str,
     keep_files: bool,
-    bias_reference: Option<&str>,
-    global_bias_reference: Option<&str>,
+    bias_prefix: Option<&str>,
+    bias_fasta: Option<&str>,
     sequence_qv_enabled: bool,
     verbose: bool,
     output_format: &str,
@@ -318,12 +318,12 @@ pub async fn run_complete_hold2out_pipeline(
     });
     
     // Optional Stage 4.5: Apply reference bias filtering
-    let (reads_file_1, reads_file_2, num_reads, bias_fraction) = if bias_reference.is_some() || global_bias_reference.is_some() {
+    let (reads_file_1, reads_file_2, num_reads, bias_fraction) = if bias_prefix.is_some() || bias_fasta.is_some() {
         let stage_start = std::time::Instant::now();
         if verbose { println!("🔬 Stage 4.5: Applying reference bias filtering"); }
         
         let (filtered_r1, filtered_r2, filtered_count, bias_frac) = apply_reference_bias(
-            &reads_file_1, &reads_file_2, fasta_file, bias_reference, global_bias_reference,
+            &reads_file_1, &reads_file_2, fasta_file, bias_prefix, bias_fasta,
             &output_path, aligner, preset, threads, verbose
         ).await?;
         
@@ -453,7 +453,7 @@ pub async fn run_complete_hold2out_pipeline(
         reads_generated: num_reads,
         reads_aligned: num_aligned,
         alignment_rate,
-        reference_bias_applied: bias_reference.is_some(),
+        reference_bias_applied: bias_prefix.is_some() || bias_fasta.is_some(),
         bias_fraction,
         execution_time_sec: execution_time,
         pipeline_stages,
@@ -926,8 +926,8 @@ async fn apply_reference_bias(
     reads_file_1: &Path,
     reads_file_2: &Path,
     fasta_file: &str,
-    bias_reference: Option<&str>,
-    global_bias_reference: Option<&str>,
+    bias_prefix: Option<&str>,
+    bias_fasta: Option<&str>,
     output_path: &Path,
     aligner: &str,
     preset: &str,
@@ -935,28 +935,28 @@ async fn apply_reference_bias(
     verbose: bool,
 ) -> Result<(PathBuf, PathBuf, usize, f64)> {
     // Determine which bias type to use
-    let reference_to_use = if let Some(global_ref) = global_bias_reference {
-        // Global bias: use provided global reference file
-        let global_ref_path = Path::new(global_ref);
+    let reference_to_use = if let Some(bias_fasta_path) = bias_fasta {
+        // External FASTA bias: use provided reference file
+        let fasta_path = Path::new(bias_fasta_path);
         
-        if !global_ref_path.exists() {
+        if !fasta_path.exists() {
             return Err(anyhow::anyhow!(
-                "Global bias reference not found: {}",
-                global_ref_path.display()
+                "Bias FASTA reference not found: {}",
+                fasta_path.display()
             ));
         }
         
         if verbose {
-            println!("   Using global bias reference: {}", global_ref_path.display());
+            println!("   Using external FASTA reference: {}", fasta_path.display());
         }
         
-        global_ref_path.to_path_buf()
-    } else if let Some(ref_prefix) = bias_reference {
-        // Local bias: extract sequences matching prefix from pangenome FASTA
-        let ref_fasta = output_path.join("local_bias_reference.fa");
+        fasta_path.to_path_buf()
+    } else if let Some(prefix) = bias_prefix {
+        // Prefix bias: extract sequences matching prefix from pangenome FASTA
+        let ref_fasta = output_path.join("prefix_bias_reference.fa");
         
         if verbose { 
-            println!("   Using local bias, extracting sequences matching: {}", ref_prefix);
+            println!("   Using prefix bias, extracting sequences matching: {}", prefix);
         }
         
         // Extract sequences matching the prefix
@@ -965,7 +965,7 @@ async fn apply_reference_bias(
                 .arg("-c")
                 .arg(format!(
                     "zcat {} | awk 'BEGIN {{RS=\">\"}} /^{}/ {{print \">\"$0}}'",
-                    fasta_file, ref_prefix
+                    fasta_file, prefix
                 ))
                 .output()?
         } else {
@@ -973,14 +973,14 @@ async fn apply_reference_bias(
                 .arg("-c")
                 .arg(format!(
                     "awk 'BEGIN {{RS=\">\"}} /^{}/ {{print \">\"$0}}' {}",
-                    ref_prefix, fasta_file
+                    prefix, fasta_file
                 ))
                 .output()?
         };
         
         if !cmd.status.success() || cmd.stdout.is_empty() {
             return Err(anyhow::anyhow!(
-                "No reference sequences found matching prefix: {}", ref_prefix
+                "No reference sequences found matching prefix: {}", prefix
             ));
         }
         
@@ -992,7 +992,7 @@ async fn apply_reference_bias(
                 .lines()
                 .filter(|l| l.starts_with('>'))
                 .count();
-            println!("   Extracted {} local reference sequence(s)", seq_count);
+            println!("   Extracted {} reference sequence(s) from prefix", seq_count);
         }
         
         fs::write(&ref_fasta, ref_sequences).await?;
@@ -1000,7 +1000,7 @@ async fn apply_reference_bias(
         ref_fasta
     } else {
         return Err(anyhow::anyhow!(
-            "Neither global_bias_reference nor bias_reference specified for bias filtering"
+            "Neither --bias-fasta nor --bias-prefix specified for bias filtering"
         ));
     };
     
