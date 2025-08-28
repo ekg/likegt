@@ -152,7 +152,7 @@ enum Commands {
         #[arg(short, long)]
         verbose: bool,
         
-        /// Output format (text, json, csv)
+        /// Output format (text, json, csv, tsv, table)
         #[arg(long, default_value = "text")]
         format: String,
     },

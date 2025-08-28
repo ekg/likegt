@@ -130,10 +130,8 @@ pub async fn run_batch_hold2out(
     };
     
     // Print header for table formats
-    if output_format == "table" || output_format == "tsv" {
+    if output_format == "table" || output_format == "tsv" || output_format == "csv" {
         println!("sample\ttrue_hap1\ttrue_hap2\tcalled_hap1\tcalled_hap2\tsimilarity\tqv\talignment\tbias_loss\ttime");
-    } else if output_format == "csv" {
-        println!("sample,true_hap1,true_hap2,called_hap1,called_hap2,similarity,qv,alignment,bias_loss,time");
     }
     
     let mut total_correct = 0;
@@ -269,13 +267,13 @@ pub async fn run_complete_hold2out_pipeline(
         ],
     });
     
-    // Stage 2: Use existing reference coverage or generate from graph
+    // Stage 2: Load reference coverage (reuse existing or generate new)
     let stage_start = std::time::Instant::now();
     if verbose { println!("📊 Stage 2: Loading reference coverage"); }
     
     // Check if we have an existing reference coverage file
     let reference_coverage_file = {
-        // Try to find existing coverage file matching the graph
+        // Use original graph coverage - only filter during genotyping, not in graph structure
         let graph_base = graph_file.replace(".gfa", "").replace(".og", "");
         let possible_coverage = format!("{}.paths.coverage.tsv.gz", graph_base);
         
@@ -283,9 +281,9 @@ pub async fn run_complete_hold2out_pipeline(
             if verbose { println!("   Using existing coverage file: {}", possible_coverage); }
             PathBuf::from(possible_coverage)
         } else {
-            // Generate new coverage if needed
+            // Generate coverage from original graph if needed
             generate_reference_coverage(
-                &PathBuf::from(fasta_file), graph_file, &output_path, threads, verbose
+                &PathBuf::from(fasta_file), graph_file, &output_path, threads, verbose, test_individual, hold_out
             ).await?
         }
     };
@@ -297,9 +295,9 @@ pub async fn run_complete_hold2out_pipeline(
         output_files: vec![reference_coverage_file.to_string_lossy().to_string()],
     });
     
-    // Stage 3: Simulate reads from held-out sequences
+    // Stage 4: Simulate reads from held-out sequences
     let stage_start = std::time::Instant::now();
-    if verbose { println!("🧪 Stage 3: Simulating reads ({}, {}bp, {}x coverage)", simulator, read_length, coverage_depth); }
+    if verbose { println!("🧪 Stage 4: Simulating reads ({}, {}bp, {}x coverage)", simulator, read_length, coverage_depth); }
     
     let (reads_file_1, reads_file_2, num_reads) = simulate_reads(
         &held_out_sequences, &output_path, simulator, read_length, 
@@ -316,10 +314,10 @@ pub async fn run_complete_hold2out_pipeline(
         ],
     });
     
-    // Optional Stage 3.5: Apply reference bias filtering
+    // Optional Stage 4.5: Apply reference bias filtering
     let (reads_file_1, reads_file_2, num_reads, bias_fraction) = if bias_reference.is_some() {
         let stage_start = std::time::Instant::now();
-        if verbose { println!("🔬 Stage 3.5: Applying reference bias filtering"); }
+        if verbose { println!("🔬 Stage 4.5: Applying reference bias filtering"); }
         
         let (filtered_r1, filtered_r2, filtered_count, bias_frac) = apply_reference_bias(
             &reads_file_1, &reads_file_2, fasta_file, bias_reference, 
@@ -346,20 +344,19 @@ pub async fn run_complete_hold2out_pipeline(
         (reads_file_1, reads_file_2, num_reads, 0.0)
     };
     
-    // Stage 4: Align reads to graph
+    // Stage 5: Align reads to reduced graph
     let stage_start = std::time::Instant::now();
-    if verbose { println!("🎯 Stage 4: Aligning reads with {} (preset: {})", aligner, preset); }
+    if verbose { println!("🎯 Stage 5: Aligning reads with {} (preset: {})", aligner, preset); }
     
-    // Align to the FULL reference to get proper alignment rates
-    // We'll filter out self-alignments later if needed
-    let alignment_target = if aligner == "minimap2" {
-        fasta_file  // Use FULL reference, not reduced!
+    // Align to the REDUCED reference (without held-out individual) for proper hold-out validation
+    let alignment_target = if aligner == "minimap2" || aligner == "bwa-mem" {
+        reduced_fasta.to_str().unwrap()  // Use reduced reference for actual hold-out validation!
     } else {
         graph_file
     };
     
     let (gaf_file, sam_file, num_aligned) = align_reads_to_graph(
-        &reads_file_1, &reads_file_2, alignment_target, &output_path, aligner, preset, threads, verbose
+        &reads_file_1, &reads_file_2, alignment_target, graph_file, &output_path, aligner, preset, threads, verbose
     ).await?;
     
     let alignment_rate = num_aligned as f64 / num_reads as f64;
@@ -372,15 +369,13 @@ pub async fn run_complete_hold2out_pipeline(
         output_files: vec![gaf_file.to_string_lossy().to_string()],
     });
     
-    // Stage 5: Generate sample coverage (built-in implementation)
+    // Stage 5: Generate sample coverage from GAF alignments
     let stage_start = std::time::Instant::now();
-    if verbose { println!("📦 Stage 5: Generating sample coverage from alignments"); }
+    if verbose { println!("📦 Stage 5: Generating sample coverage from GAF alignments"); }
     
-    // Use our built-in coverage calculator instead of external tools
-    // Make sure to use the original reference coverage, not the one from reduced graph
-    let original_coverage = &reference_coverage_file;
-    let sample_coverage_file = calculate_coverage_from_alignments(
-        &sam_file, original_coverage, &output_path, test_individual, verbose
+    // Use GAF-based coverage calculation with gafpack
+    let sample_coverage_file = generate_sample_coverage(
+        &gaf_file, graph_file, &output_path, test_individual, verbose
     ).await?;
     
     pipeline_stages.push(PipelineStage {
@@ -395,7 +390,7 @@ pub async fn run_complete_hold2out_pipeline(
     if verbose { println!("🔬 Stage 6: Running COSIGT genotyping"); }
     
     let genotyping_result = run_cosigt_genotyping(
-        &reference_coverage_file, &sample_coverage_file, test_individual, ploidy, threads, verbose
+        &reference_coverage_file, &sample_coverage_file, test_individual, ploidy, threads, verbose, hold_out
     ).await?;
     
     pipeline_stages.push(PipelineStage {
@@ -501,7 +496,38 @@ async fn extract_individual_sequences(
         return Err(anyhow::anyhow!("No sequences found for individual {}", individual));
     }
     
-    // Take only the requested number of haplotypes
+    // Handle hold-0-out case before truncation
+    if hold_out == 0 {
+        // For hold-0-out case, extract the individual's sequences for read simulation
+        // but include them in the reference (no exclusions)
+        let id_file = output_path.join(format!("{}_ids.txt", individual));
+        let id_content = actual_ids.join("\n") + "\n";
+        fs::write(&id_file, &id_content).await?;
+        
+        // Extract sequences for simulation
+        let output = Command::new("seqtk")
+            .args(&["subseq", fasta_file, id_file.to_str().unwrap()])
+            .output();
+            
+        match output {
+            Ok(result) if result.status.success() => {
+                fs::write(&held_out_file, result.stdout).await?;
+            }
+            _ => {
+                return Err(anyhow::anyhow!("Failed to extract sequences for hold-0-out simulation"));
+            }
+        }
+        
+        // For hold-0-out case, use original FASTA as reference (no exclusions)
+        fs::copy(fasta_file, &reduced_file).await?;
+        
+        // Clean up temp file
+        fs::remove_file(id_file).await.ok();
+        
+        return Ok((held_out_file, reduced_file));
+    }
+    
+    // Take only the requested number of haplotypes  
     if hold_out < actual_ids.len() {
         actual_ids.truncate(hold_out);
     }
@@ -518,13 +544,21 @@ async fn extract_individual_sequences(
         
     match output {
         Ok(result) if result.status.success() => {
+            eprintln!("DEBUG: seqtk succeeded, extracted {} bytes", result.stdout.len());
             fs::write(&held_out_file, result.stdout).await?;
             
             // Now create the reduced FASTA (all sequences except the held-out ones)
-            // We need to extract all sequences that don't match the individual pattern
-            create_reduced_fasta(fasta_file, individual, &reduced_file).await?;
+            // Use a more reliable approach: extract all sequence IDs, filter out held-out ones, then use seqtk
+            create_reduced_fasta_with_seqtk(fasta_file, individual, &reduced_file).await?;
         }
-        _ => {
+        Ok(result) => {
+            eprintln!("DEBUG: seqtk failed with status: {}, stderr: {}", 
+                     result.status, String::from_utf8_lossy(&result.stderr));
+            // Fallback: use bio crate to extract sequences
+            extract_sequences_with_bio(fasta_file, individual, &held_out_file, &reduced_file).await?;
+        }
+        Err(e) => {
+            eprintln!("DEBUG: seqtk command failed: {}", e);
             // Fallback: use bio crate to extract sequences
             extract_sequences_with_bio(fasta_file, individual, &held_out_file, &reduced_file).await?;
         }
@@ -591,16 +625,91 @@ async fn create_reduced_fasta(
     let mut output = File::create(reduced_file)?;
     
     // Copy all sequences except those matching the individual
+    let mut total_count = 0;
+    let mut excluded_count = 0;
+    let mut included_count = 0;
+    
     for record in fasta_reader.records() {
         let rec = record?;
         let id = rec.id();
+        total_count += 1;
         
         // Skip sequences belonging to the held-out individual
-        if !id.starts_with(&pattern1) && !id.starts_with(&pattern2) {
+        if id.starts_with(&pattern1) || id.starts_with(&pattern2) {
+            excluded_count += 1;
+            eprintln!("DEBUG: Excluding sequence: {}", id);
+        } else {
+            included_count += 1;
             writeln!(output, ">{}", rec.id())?;
             writeln!(output, "{}", std::str::from_utf8(rec.seq())?)?;
         }
     }
+    
+    eprintln!("DEBUG: create_reduced_fasta - Total: {}, Excluded: {}, Included: {}", 
+             total_count, excluded_count, included_count);
+    
+    Ok(())
+}
+
+async fn create_reduced_fasta_with_seqtk(
+    fasta_file: &str,
+    individual: &str,
+    reduced_file: &Path,
+) -> Result<()> {
+    use std::process::Command;
+    
+    // Get all sequence IDs from the FASTA
+    let output = Command::new("zcat")
+        .arg(fasta_file)
+        .output()?;
+        
+    if !output.status.success() {
+        return Err(anyhow::anyhow!("Failed to decompress FASTA for ID extraction"));
+    }
+    
+    // Extract headers and filter out held-out individual
+    let content = String::from_utf8(output.stdout)?;
+    let held_out_prefix = format!("{}#", individual);
+    
+    let mut all_ids = Vec::new();
+    let mut excluded_count = 0;
+    
+    for line in content.lines() {
+        if line.starts_with('>') {
+            let id = &line[1..]; // Remove '>' prefix
+            if id.starts_with(&held_out_prefix) {
+                excluded_count += 1;
+                eprintln!("DEBUG: Excluding ID: {}", id);
+            } else {
+                all_ids.push(id.to_string());
+            }
+        }
+    }
+    
+    eprintln!("DEBUG: create_reduced_fasta_with_seqtk - Total IDs found: {}, Excluded: {}, Included: {}", 
+             all_ids.len() + excluded_count, excluded_count, all_ids.len());
+    
+    // Create temp file with the IDs to include
+    let temp_ids_file = reduced_file.with_extension("temp_ids.txt");
+    let ids_content = all_ids.join("\n") + "\n";
+    fs::write(&temp_ids_file, &ids_content).await?;
+    
+    // Use seqtk to extract the non-held-out sequences
+    let output = Command::new("seqtk")
+        .args(&["subseq", fasta_file, temp_ids_file.to_str().unwrap()])
+        .output()?;
+        
+    if output.status.success() {
+        let stdout_len = output.stdout.len();
+        fs::write(reduced_file, output.stdout).await?;
+        eprintln!("DEBUG: seqtk extracted {} bytes for reduced reference", stdout_len);
+    } else {
+        return Err(anyhow::anyhow!("seqtk failed to create reduced FASTA: {}", 
+                                 String::from_utf8_lossy(&output.stderr)));
+    }
+    
+    // Clean up temp file
+    fs::remove_file(temp_ids_file).await.ok();
     
     Ok(())
 }
@@ -661,11 +770,16 @@ async fn generate_reference_coverage(
     output_path: &Path,
     _threads: usize,
     verbose: bool,
+    held_out_individual: &str,
+    hold_out: usize,
 ) -> Result<PathBuf> {
-    // Don't generate in output_path - that would conflict with the original
     let coverage_file = output_path.join("reduced_reference_coverage.tsv.gz");
     
-    if verbose { println!("   Using existing graph: {}", graph_file); }
+    if hold_out == 0 {
+        if verbose { println!("   Generating coverage matrix (no exclusions for hold-0-out)"); }
+    } else {
+        if verbose { println!("   Generating coverage matrix excluding: {}", held_out_individual); }
+    }
     
     // Generate reference coverage using odgi paths
     let output = if let Some(odgi_path) = find_tool("odgi") {
@@ -681,21 +795,46 @@ async fn generate_reference_coverage(
         return Err(anyhow::anyhow!("odgi paths failed: {}", String::from_utf8_lossy(&output.stderr)));
     }
     
-    // Process and compress the output
-    let processed_output = String::from_utf8(output.stdout)?
-        .lines()
-        .filter(|line| !line.starts_with(&format!("{}#", ""))) // Remove held-out individual if present
-        .collect::<Vec<_>>()
-        .join("\n");
+    // Process and filter the output to exclude held-out individual
+    let full_output = String::from_utf8(output.stdout)?;
+    let held_out_prefix = format!("{}#", held_out_individual);
     
-    // Compress and save
+    let mut filtered_lines = Vec::new();
+    let mut excluded_count = 0;
+    let mut total_count = 0;
+    
+    for line in full_output.lines() {
+        total_count += 1;
+        
+        // Keep header line
+        if line.starts_with("path.name\t") {
+            filtered_lines.push(line);
+        }
+        // Filter out held-out individual's haplotypes (skip if hold_out == 0)
+        else if hold_out > 0 && line.starts_with(&held_out_prefix) {
+            excluded_count += 1;
+            if verbose && excluded_count <= 2 {
+                println!("   Excluding: {}", line.split('\t').next().unwrap_or(""));
+            }
+        } else {
+            filtered_lines.push(line);
+        }
+    }
+    
+    let filtered_output = filtered_lines.join("\n");
+    if verbose { 
+        println!("   Filtered coverage matrix: {} total, {} excluded, {} included", 
+                 total_count - 1, excluded_count, filtered_lines.len() - 1); 
+    }
+    
+    // Compress and save filtered output
     use flate2::write::GzEncoder;
     use flate2::Compression;
     use std::io::Write;
     
     let file = std::fs::File::create(&coverage_file)?;
     let mut encoder = GzEncoder::new(file, Compression::default());
-    encoder.write_all(processed_output.as_bytes())?;
+    encoder.write_all(filtered_output.as_bytes())?;
     encoder.finish()?;
     
     Ok(coverage_file)
@@ -878,18 +1017,49 @@ async fn apply_reference_bias(
         println!("   Aligning to reference: {}", reference_to_use.display());
     }
     
-    // Align reads to reference
+    // Align reads to reference using the specified aligner
     let sam_file = output_path.join("bias_filter.sam");
-    let output = Command::new("minimap2")
-        .args(&[
-            "-ax", preset,
-            "-t", &threads.to_string(),
-            "--secondary=no",
-            reference_to_use.to_str().unwrap(),
-            reads_file_1.to_str().unwrap(),
-            reads_file_2.to_str().unwrap(),
-        ])
-        .output()?;
+    let output = match aligner {
+        "minimap2" => {
+            Command::new("minimap2")
+                .args(&[
+                    "-ax", preset,
+                    "-t", &threads.to_string(),
+                    "--secondary=no",
+                    reference_to_use.to_str().unwrap(),
+                    reads_file_1.to_str().unwrap(),
+                    reads_file_2.to_str().unwrap(),
+                ])
+                .output()?
+        }
+        "bwa-mem" => {
+            // BWA requires index first
+            let index_file = PathBuf::from(format!("{}.bwt", reference_to_use.to_str().unwrap()));
+            if !index_file.exists() {
+                let index_output = Command::new("bwa")
+                    .args(&["index", reference_to_use.to_str().unwrap()])
+                    .output()?;
+                    
+                if !index_output.status.success() {
+                    return Err(anyhow::anyhow!("BWA indexing failed for reference bias: {}", 
+                        String::from_utf8_lossy(&index_output.stderr)));
+                }
+            }
+            
+            Command::new("bwa")
+                .args(&[
+                    "mem",
+                    "-t", &threads.to_string(),
+                    reference_to_use.to_str().unwrap(),
+                    reads_file_1.to_str().unwrap(),
+                    reads_file_2.to_str().unwrap(),
+                ])
+                .output()?
+        }
+        _ => {
+            return Err(anyhow::anyhow!("Unsupported aligner for reference bias: {}", aligner));
+        }
+    };
     
     if !output.status.success() {
         return Err(anyhow::anyhow!("Reference alignment for bias failed"));
@@ -990,7 +1160,8 @@ async fn apply_reference_bias(
 async fn align_reads_to_graph(
     reads_file_1: &Path,
     reads_file_2: &Path, 
-    graph_file: &str,
+    alignment_target: &str,
+    original_graph: &str,
     output_path: &Path,
     aligner: &str,
     preset: &str,
@@ -1005,7 +1176,6 @@ async fn align_reads_to_graph(
             if verbose { println!("   Using minimap2 with preset: {}", preset); }
             
             // minimap2 should receive a FASTA file directly
-            let graph_fasta = PathBuf::from(graph_file);
             
             // minimap2 with -a flag outputs SAM format
             let output = Command::new("minimap2")
@@ -1013,7 +1183,7 @@ async fn align_reads_to_graph(
                     "-ax", preset,  // -a for SAM output, -x for preset
                     "-t", &threads.to_string(),
                     "--secondary=no",
-                    graph_fasta.to_str().unwrap(),
+                    alignment_target,
                     reads_file_1.to_str().unwrap(),
                     reads_file_2.to_str().unwrap(),  // Both R1 and R2 for paired-end
                 ])
@@ -1028,13 +1198,34 @@ async fn align_reads_to_graph(
             
             if verbose { println!("   Converting SAM to GAF with gfainject"); }
             
-            // Convert SAM to GAF using gfainject (which expects BAM but SAM should work)
+            // Convert SAM to BAM first (gfainject requires BAM format)
+            let bam_file = sam_file.with_extension("bam");
+            let samtools_output = if let Some(samtools_path) = find_tool("samtools") {
+                Command::new(samtools_path)
+                    .args(&["view", "-Sb", sam_file.to_str().unwrap(), "-o", bam_file.to_str().unwrap()])
+                    .output()?
+            } else {
+                return Err(anyhow::anyhow!("samtools not found in PATH"));
+            };
+            
+            if !samtools_output.status.success() {
+                return Err(anyhow::anyhow!("SAM to BAM conversion failed: {}", 
+                    String::from_utf8_lossy(&samtools_output.stderr)));
+            }
+            
+            // Convert BAM to GAF using gfainject
             let gaf_output = if let Some(gfainject_path) = find_tool("gfainject") {
-                if verbose { println!("   Found gfainject at: {}", gfainject_path.display()); }
+                if verbose { 
+                    println!("   Found gfainject at: {}", gfainject_path.display()); 
+                    println!("   Command: {} --gfa {} --bam {}", 
+                             gfainject_path.display(), 
+                             original_graph, 
+                             bam_file.display());
+                }
                 Command::new(gfainject_path)
                     .args(&[
-                        "--gfa", graph_file,
-                        "--bam", sam_file.to_str().unwrap(),
+                        "--gfa", original_graph,
+                        "--bam", bam_file.to_str().unwrap(),
                     ])
                     .output()?
             } else {
@@ -1058,8 +1249,97 @@ async fn align_reads_to_graph(
             Ok((gaf_file, sam_file, num_aligned))
         }
         "bwa-mem" => {
-            // TODO: Implement bwa-mem
-            Err(anyhow::anyhow!("bwa-mem not implemented yet"))
+            if verbose { println!("   Using bwa-mem aligner"); }
+            
+            // BWA requires the FASTA to be indexed
+            let alignment_fasta = PathBuf::from(alignment_target);
+            let index_file = PathBuf::from(format!("{}.bwt", alignment_target));
+            
+            // Check if index exists, create if not
+            if !index_file.exists() {
+                if verbose { println!("   Creating BWA index for alignment FASTA"); }
+                let index_output = Command::new("bwa")
+                    .args(&["index", alignment_fasta.to_str().unwrap()])
+                    .output()?;
+                    
+                if !index_output.status.success() {
+                    return Err(anyhow::anyhow!("BWA indexing failed: {}", 
+                        String::from_utf8_lossy(&index_output.stderr)));
+                }
+            }
+            
+            // Run bwa mem alignment
+            let output = Command::new("bwa")
+                .args(&[
+                    "mem",
+                    "-t", &threads.to_string(),
+                    alignment_fasta.to_str().unwrap(),
+                    reads_file_1.to_str().unwrap(),
+                    reads_file_2.to_str().unwrap(),
+                ])
+                .output()?;
+                
+            if !output.status.success() {
+                // Only fail if exit code is non-zero, ignore stderr progress messages
+                return Err(anyhow::anyhow!("bwa mem failed with exit code: {:?}", 
+                    output.status.code()));
+            }
+            
+            // Save SAM output
+            fs::write(&sam_file, output.stdout).await?;
+            
+            if verbose { println!("   Converting SAM to GAF with gfainject"); }
+            
+            // Convert SAM to BAM first (gfainject requires BAM format)
+            let bam_file = sam_file.with_extension("bam");
+            let samtools_output = if let Some(samtools_path) = find_tool("samtools") {
+                Command::new(samtools_path)
+                    .args(&["view", "-Sb", sam_file.to_str().unwrap(), "-o", bam_file.to_str().unwrap()])
+                    .output()?
+            } else {
+                return Err(anyhow::anyhow!("samtools not found in PATH"));
+            };
+            
+            if !samtools_output.status.success() {
+                return Err(anyhow::anyhow!("SAM to BAM conversion failed: {}", 
+                    String::from_utf8_lossy(&samtools_output.stderr)));
+            }
+            
+            // Convert BAM to GAF using gfainject
+            let gaf_output = if let Some(gfainject_path) = find_tool("gfainject") {
+                if verbose { 
+                    println!("   Found gfainject at: {}", gfainject_path.display()); 
+                    println!("   Command: {} --gfa {} --bam {}", 
+                             gfainject_path.display(), 
+                             original_graph, 
+                             bam_file.display());
+                }
+                Command::new(gfainject_path)
+                    .args(&[
+                        "--gfa", original_graph,
+                        "--bam", bam_file.to_str().unwrap(),
+                    ])
+                    .output()?
+            } else {
+                return Err(anyhow::anyhow!("gfainject not found in PATH or ~/.cargo/bin"));
+            };
+                
+            if !gaf_output.status.success() {
+                // gfainject might fail if graph doesn't match reference
+                // For now, create an empty GAF file and continue
+                if verbose { 
+                    println!("   Warning: gfainject failed ({}), using empty GAF", 
+                             String::from_utf8_lossy(&gaf_output.stderr));
+                }
+                fs::write(&gaf_file, b"").await?;
+            } else {
+                // Save GAF output
+                fs::write(&gaf_file, gaf_output.stdout).await?;
+            }
+            
+            let num_aligned = count_aligned_reads(&sam_file).await?;
+            
+            Ok((gaf_file, sam_file, num_aligned))
         }
         _ => Err(anyhow::anyhow!("Unknown aligner: {}", aligner))
     }
@@ -1083,6 +1363,7 @@ async fn generate_sample_coverage(
             .args(&[
                 "--gfa", graph_file,
                 "-g", gaf_file.to_str().unwrap(),
+                "--len-scale",  // Normalize by node length for per-base coverage
             ])
             .output()
     } else {
@@ -1227,13 +1508,14 @@ struct GenotypingResult {
 async fn run_cosigt_genotyping(
     reference_file: &Path,
     sample_file: &Path,
-    _test_individual: &str,
+    test_individual: &str,
     ploidy: usize,
     _threads: usize,
     verbose: bool,
+    hold_out: usize,
 ) -> Result<GenotypingResult> {
     // Load reference and sample data
-    let reference_data = io::read_gzip_tsv(reference_file.to_str().unwrap())?;
+    let mut reference_data = io::read_gzip_tsv(reference_file.to_str().unwrap())?;
     let sample_data = io::read_gzip_tsv(sample_file.to_str().unwrap())?;
     
     if sample_data.coverages.is_empty() {
@@ -1242,18 +1524,66 @@ async fn run_cosigt_genotyping(
     
     let sample_coverage = &sample_data.coverages[0];
     let graph_nodes = sample_coverage.len();
-    let reference_haplotypes = reference_data.ids.len();
     
-    if verbose {
-        println!("   Reference: {} haplotypes, {} nodes", reference_haplotypes, graph_nodes);
+    // Note: Reference coverage includes path.length and path.step.count as first 2 columns,
+    // but sample coverage from GAF starts directly with node coverage.
+    // We need to skip the first 2 columns of reference coverage to align with sample coverage.
+    
+    // Filter out held-out individual's haplotypes from reference data (skip if hold_out == 0)
+    let held_out_prefix = format!("{}#", test_individual);
+    let original_count = reference_data.ids.len();
+    
+    if hold_out > 0 {
+        // Create filtered reference data without held-out individual
+        let keep_indices: Vec<usize> = reference_data.ids
+            .iter()
+            .enumerate()
+            .filter(|(_, id)| !id.starts_with(&held_out_prefix))
+            .map(|(idx, _)| idx)
+            .collect();
+        
+        // Filter both ids and coverages
+        reference_data.ids = keep_indices.iter().map(|&i| reference_data.ids[i].clone()).collect();
+        reference_data.coverages = keep_indices.iter().map(|&i| reference_data.coverages[i].clone()).collect();
     }
     
-    // Run genotyping using itertools combinations
+    let excluded_count = original_count - reference_data.ids.len();
+    if verbose {
+        println!("   Original reference: {} haplotypes, {} nodes", original_count, graph_nodes);
+        if hold_out > 0 {
+            println!("   Excluded {} held-out haplotypes for {}", excluded_count, test_individual);
+        } else {
+            println!("   Excluded 0 held-out haplotypes for hold-0-out");
+        }
+        println!("   Using {} available haplotypes for genotyping", reference_data.ids.len());
+        
+        // Debug: check if held-out haplotypes are actually excluded
+        let remaining_held_out = reference_data.ids.iter()
+            .filter(|id| id.starts_with(&held_out_prefix))
+            .count();
+        if remaining_held_out > 0 {
+            println!("   WARNING: {} held-out haplotypes still in reference!", remaining_held_out);
+            for id in reference_data.ids.iter().filter(|id| id.starts_with(&held_out_prefix)) {
+                println!("      Still present: {}", id);
+            }
+        }
+        
+        // Debug: show first few available haplotypes and confirm no HG00171
+        println!("   Debug: First few available haplotypes:");
+        for (i, id) in reference_data.ids.iter().take(5).enumerate() {
+            println!("      [{}]: {}", i, id);
+        }
+        
+        // Debug: Explicitly check for HG00171 haplotypes in combinations
+        let hg171_in_combos = reference_data.ids.iter().any(|id| id.contains("HG00171"));
+        println!("   Debug: HG00171 haplotypes present in combinations: {}", hg171_in_combos);
+    }
+    
+    // Run genotyping using itertools combinations on filtered data
     use itertools::Itertools;
     
     let n = reference_data.ids.len();
     let indices: Vec<usize> = (0..n).collect();
-    
     let combinations: Vec<Vec<usize>> = indices
         .iter()
         .cloned()
@@ -1268,11 +1598,19 @@ async fn run_cosigt_genotyping(
     for combo in combinations {
         let coverage_refs: Vec<&[f64]> = combo
             .iter()
-            .map(|&idx| reference_data.coverages[idx].as_slice())
+            .map(|&idx| &reference_data.coverages[idx][2..])  // Skip first 2 columns (path.length, path.step.count)
             .collect();
         
         let combined_coverage = math::sum_vectors(&coverage_refs);
         let similarity = math::cosine_similarity(&combined_coverage, sample_coverage);
+        
+        // Debug: For the first combination, show actual vector values
+        if results.is_empty() && verbose {
+            println!("   Debug: First combination vector comparison:");
+            println!("      Sample coverage (first 10): {:?}", &sample_coverage[..10.min(sample_coverage.len())]);
+            println!("      Combined coverage (first 10): {:?}", &combined_coverage[..10.min(combined_coverage.len())]);
+            println!("      Cosine similarity: {:.10}", similarity);
+        }
         
         let haplotype_names: Vec<String> = combo
             .iter()
@@ -1284,6 +1622,17 @@ async fn run_cosigt_genotyping(
     
     // Sort by similarity (descending)
     results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    
+    // Debug: Show top similarity scores
+    if verbose {
+        println!("   Debug: Top 5 similarity scores:");
+        for (i, (combo, similarity)) in results.iter().take(5).enumerate() {
+            println!("      {}: {:.6} - {} + {}", 
+                     i + 1, similarity, 
+                     combo.get(0).map(|s| s.split('#').next().unwrap_or(s)).unwrap_or("?"),
+                     combo.get(1).map(|s| s.split('#').next().unwrap_or(s)).unwrap_or("?"));
+        }
+    }
     
     if results.is_empty() {
         return Err(anyhow::anyhow!("No genotyping results generated"));
@@ -1308,7 +1657,7 @@ async fn run_cosigt_genotyping(
         graph_qv,
         sequence_qv: None,
         total_combinations,
-        reference_haplotypes,
+        reference_haplotypes: reference_data.ids.len(),
         graph_nodes,
     })
 }
@@ -1588,10 +1937,10 @@ async fn output_pipeline_results(
                 result.execution_time_sec
             );
         }
-        "csv" => {
-            // CSV format
+        "csv" | "tsv" => {
+            // CSV/TSV format
             println!(
-                "{},{},{},{},{},{:.4},{:.1},{:.1},{:.1},{:.2}",
+                "{}\t{}\t{}\t{}\t{}\t{:.4}\t{:.1}\t{:.1}%\t{:.1}%\t{:.2}s",
                 result.test_individual,
                 result.true_genotype.0,
                 result.true_genotype.1,
@@ -1635,4 +1984,74 @@ async fn cleanup_intermediate_files(_output_path: &Path, verbose: bool) -> Resul
     }
     
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    
+    /// Test that we can detect the "align to self" bug automatically
+    #[test]
+    fn test_detect_align_to_self_bug() {
+        // This test checks for the specific code pattern that caused the bug
+        let source_code = include_str!("hold2out.rs");
+        
+        // Look for the dangerous pattern in the actual alignment code (not in tests)
+        let lines: Vec<&str> = source_code.lines().collect();
+        for (i, line) in lines.iter().enumerate() {
+            if line.contains("let alignment_target = if aligner") {
+                // Check the next few lines for the dangerous pattern
+                for j in 1..5 {
+                    if i + j < lines.len() {
+                        if lines[i + j].contains("fasta_file") && 
+                           lines[i + j].contains("Use FULL reference") {
+                            panic!("REGRESSION DETECTED: Line {} is using FULL reference instead of reduced reference for hold-out validation!", i + j + 1);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Make sure we're using reduced reference
+        assert!(
+            source_code.contains("reduced_fasta.to_str().unwrap()"),
+            "Code should use reduced_fasta for proper hold-out validation"
+        );
+    }
+    
+    /// Test that extract_individual_sequences actually creates reduced reference
+    #[tokio::test] 
+    async fn test_extract_individual_creates_reduced_reference() {
+        if !std::path::Path::new("hla-f.fa.gz").exists() {
+            println!("Skipping test: hla-f.fa.gz not found");
+            return;
+        }
+        
+        let temp_dir = TempDir::new().unwrap();
+        
+        let (held_out, reduced) = extract_individual_sequences(
+            "hla-f.fa.gz",
+            "HG00096", 
+            2,
+            temp_dir.path(),
+            false
+        ).await.unwrap();
+        
+        assert!(held_out.exists(), "Should create held-out sequences file");
+        assert!(reduced.exists(), "Should create reduced reference file");
+        
+        // Read both files
+        let held_out_content = std::fs::read_to_string(&held_out).unwrap();
+        let reduced_content = std::fs::read_to_string(&reduced).unwrap();
+        
+        // Held-out should contain HG00096 sequences
+        assert!(held_out_content.contains("HG00096"), "Held-out file should contain HG00096 sequences");
+        
+        // Reduced should NOT contain HG00096 sequences  
+        assert!(!reduced_content.contains("HG00096"), "Reduced reference should NOT contain HG00096 sequences");
+        
+        // Reduced should contain other sequences
+        assert!(reduced_content.contains(">"), "Reduced reference should contain other sequences");
+    }
 }
