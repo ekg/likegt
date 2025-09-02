@@ -73,6 +73,7 @@ pub struct Hold2OutResult {
     pub correct: bool,
     pub graph_qv: f64,
     pub sequence_qv: Option<f64>,
+    pub max_attainable_qv: Option<f64>,  // Best possible QV from non-self haplotypes
     pub total_combinations_tested: usize,
     pub reference_haplotypes: usize,
     pub graph_nodes: usize,
@@ -358,7 +359,7 @@ pub async fn run_complete_hold2out_pipeline(
         graph_file
     };
     
-    let (gaf_file, sam_file, num_aligned) = align_reads_to_graph(
+    let (gaf_file, _sam_file, num_aligned) = align_reads_to_graph(
         &reads_file_1, &reads_file_2, alignment_target, graph_file, &output_path, aligner, preset, threads, verbose
     ).await?;
     
@@ -447,6 +448,7 @@ pub async fn run_complete_hold2out_pipeline(
         correct: genotyping_result.correct,
         graph_qv: genotyping_result.graph_qv,
         sequence_qv,
+        max_attainable_qv: None,  // Will be computed separately if needed
         total_combinations_tested: genotyping_result.total_combinations,
         reference_haplotypes: genotyping_result.reference_haplotypes,
         graph_nodes: genotyping_result.graph_nodes,
@@ -1912,23 +1914,7 @@ async fn output_pipeline_results(
     
     // Console output based on format
     match format {
-        "table" | "tsv" => {
-            // Tab-separated format for easy parsing
-            println!(
-                "{}\t{}\t{}\t{}\t{}\t{:.4}\t{:.1}\t{:.1}%\t{:.1}%\t{:.2}s",
-                result.test_individual,
-                result.true_genotype.0,
-                result.true_genotype.1,
-                result.called_genotype.0,
-                result.called_genotype.1,
-                result.cosine_similarity,
-                result.graph_qv,
-                result.alignment_rate * 100.0,
-                result.bias_fraction * 100.0,
-                result.execution_time_sec
-            );
-        }
-        "csv" | "tsv" => {
+        "table" | "tsv" | "csv" => {
             // CSV/TSV format
             println!(
                 "{}\t{}\t{}\t{}\t{}\t{:.4}\t{:.1}\t{:.1}%\t{:.1}%\t{:.2}s",

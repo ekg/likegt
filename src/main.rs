@@ -161,6 +161,25 @@ enum Commands {
         #[arg(long, default_value = "text")]
         format: String,
     },
+    
+    /// Compute maximum attainable QV for samples
+    MaxQv {
+        /// Input coverage matrix file (.tsv or .tsv.gz)
+        #[arg(short, long)]
+        coverage: String,
+        
+        /// Output file (optional, defaults to stdout)
+        #[arg(short, long)]
+        output: Option<String>,
+        
+        /// Ploidy (number of haplotypes per individual)
+        #[arg(short, long, default_value = "2")]
+        ploidy: usize,
+        
+        /// Verbose output
+        #[arg(short, long)]
+        verbose: bool,
+    },
 }
 
 #[tokio::main]
@@ -268,6 +287,15 @@ async fn main() -> Result<()> {
                     &format,
                 ).await
             }
+        }
+        
+        Commands::MaxQv { coverage, output, ploidy, verbose } => {
+            likegt::commands::max_qv::run_max_qv_analysis(
+                &coverage,
+                output.as_deref(),
+                ploidy,
+                verbose,
+            ).await
         }
     }
 }
