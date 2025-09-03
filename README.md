@@ -40,32 +40,37 @@ LikeGT implements comprehensive validation pipelines for pangenome genotyping, i
 
 ### Prerequisites
 
-Required tools (must be in PATH):
-```bash
-# Core tools
-cargo         # Rust compiler
-odgi          # Graph manipulation
-minimap2      # Read alignment
-wgsim         # Read simulation
-gfainject     # SAM/BAM to GAF conversion
-gafpack       # Coverage calculation
-samtools      # SAM/BAM processing
-seqtk         # FASTA manipulation
+LikeGT requires several bioinformatics tools to be installed and available in your PATH.
 
-# Optional tools
-allwave       # For graph construction
-seqwish       # For graph construction
-bwa-mem       # Alternative aligner
-pbsim3        # Long-read simulation
-mason         # Alternative read simulator
-```
+**Core Dependencies:**
+- `cargo` (>= 1.70) - Rust compiler and package manager
+- `odgi` (>= 0.8) - Optimized dynamic genome/graph implementation
+- `minimap2` (>= 2.24) - Fast sequence alignment program
+- `wgsim` (>= 1.0) - Read simulator for next-generation sequencing
+- `gfainject` - Tool to project SAM/BAM alignments onto pangenome graphs
+- `gafpack` - Coverage calculator for GAF alignments
+- `samtools` (>= 1.17) - SAM/BAM file manipulation
+- `seqtk` (>= 1.3) - FASTA/FASTQ processing toolkit
 
-### Building from Source
+**Additional Dependencies:**
+- `allwave` - All-vs-all sequence alignment (required for `max-qv` and `build` commands)
+- `seqwish` - Graph inducer from alignments (required for `build` command)
+- `bwa` (>= 0.7.17) - Alternative aligner (optional, for `--aligner bwa-mem`)
+- `zcat`/`gzip` - For handling compressed files
+
+**Python Dependencies (for analysis scripts):**
+- Python 3.8+
+- Standard library only (no external packages required)
+
+### Quick Installation
 
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/likegt.git
 cd likegt
+
+# Check and install dependencies
+./install_dependencies.sh
 
 # Build release version (recommended)
 cargo build --release
@@ -75,6 +80,42 @@ cargo test
 
 # Install to cargo bin directory
 cargo install --path .
+```
+
+### Manual Installation
+
+If you prefer to install dependencies manually:
+
+1. **Install Rust** (if not already installed):
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+2. **Install bioinformatics tools**:
+
+Using conda/mamba (recommended):
+```bash
+conda create -n likegt python=3.10
+conda activate likegt
+conda install -c bioconda -c conda-forge \
+    minimap2 samtools seqtk bwa odgi seqwish wgsim
+```
+
+Using apt (Ubuntu/Debian):
+```bash
+sudo apt update
+sudo apt install minimap2 samtools seqtk bwa
+```
+
+3. **Install tools from source** (required for some dependencies):
+- odgi: https://github.com/pangenome/odgi
+- gfainject: https://github.com/ekg/gfainject  
+- gafpack: https://github.com/ekg/gafpack
+- allwave: https://github.com/ekg/allwave
+
+4. **Build LikeGT**:
+```bash
+cargo build --release
 ```
 
 ## Quick Start
@@ -95,11 +136,27 @@ likegt hold-out -f sequences.fa.gz -g graph.gfa -i all --format tsv > results.ts
 ### 2. Compute Maximum Attainable QV
 
 ```bash
-# Analyze coverage matrix
-likegt max-qv -c coverage_matrix.tsv.gz -v
+# Single individual - find best non-self match
+likegt max-qv -f sequences.fa.gz -i HG00096 -v
+
+# Multiple individuals
+likegt max-qv -f sequences.fa.gz -i "HG00096,HG00171,HG00268" -v
+
+# All individuals in the dataset (shows allwave progress with -v)
+likegt max-qv -f sequences.fa.gz -i all -v
+
+# Example verbose output with progress:
+# 📊 Found 65 individuals to process
+# 🧬 Running allwave for all-vs-all alignment...
+# [1.0s] 436/1242 (35.1%) 435.9 alignments/sec ETA: 1.8s
+# [2.3s] 609/1242 (49.0%) 263.7 alignments/sec ETA: 2.4s
+# ✅ Got 1310 alignment records
+# [1/65] Processing HG00096...
+#   Best match: HG00268#1 + HG04036#2
+#   Max attainable QV: 31.4
 
 # Save results to file
-likegt max-qv -c coverage_matrix.tsv.gz -o max_qv_results.txt
+likegt max-qv -f sequences.fa.gz -i all -o max_qv_results.tsv
 ```
 
 ### 3. Build Pangenome Graph
@@ -116,13 +173,29 @@ likegt build -f sequences.fa -o output_prefix -k 25,51,101 -t 8
 
 ### `hold-out` - Hold-out Validation Pipeline
 
-Complete pipeline for hold-k-out validation including:
-1. Sequence extraction
-2. Read simulation
-3. Alignment to graph
-4. Coverage calculation
-5. Genotype calling
-6. QV computation
+The hold-out validation pipeline evaluates genotyping accuracy by simulating a realistic genotyping scenario where the true haplotypes are excluded from the reference panel.
+
+**How the Pipeline Works:**
+
+1. **Sequence Extraction**: Extracts the target individual's haplotype sequences from the input FASTA
+2. **Read Simulation**: Simulates paired-end sequencing reads from the extracted sequences using:
+   - `wgsim` for short reads (default: 150bp reads, 30x coverage)
+   - Configurable error rates and fragment sizes
+3. **Read Alignment**: Maps simulated reads to the pangenome graph:
+   - First aligns to linear sequences using `minimap2` or `bwa-mem`
+   - Produces SAM/BAM alignment file
+4. **Graph Projection**: Projects linear alignments onto the graph:
+   - Converts SAM to GAF format using `gfainject`
+   - Maps linear coordinates to graph node space
+5. **Coverage Calculation**: Computes per-node coverage using `gafpack`:
+   - Counts read support for each graph node
+   - Generates coverage matrix for the sample
+6. **Genotype Calling**: Uses COSIGT algorithm to find best matching genotype:
+   - Computes cosine similarity between sample and reference coverage vectors
+   - Identifies the pair of reference haplotypes with highest similarity
+7. **Quality Assessment**: Calculates QV from cosine similarity:
+   - QV = -10 * log10(1 - similarity)
+   - Reports whether correct genotype was called
 
 **Options:**
 - `-f, --fasta`: Input FASTA file with haplotype sequences
@@ -137,14 +210,15 @@ Complete pipeline for hold-k-out validation including:
 - `--format`: Output format (text, json, csv, tsv, table)
 - `-v, --verbose`: Verbose output
 
-### `max-qv` - Maximum Attainable QV
+### `max-qv` - Maximum Attainable QV using Sequence Alignment
 
-Computes the best possible QV when genotyping using non-self haplotypes (nearest neighbor approach).
+Computes the best possible QV achievable when genotyping held-out individuals by finding their most similar non-self haplotypes using actual sequence alignment with allwave.
 
 **Options:**
-- `-c, --coverage`: Input coverage matrix (.tsv or .tsv.gz)
+- `-f, --fasta`: Input FASTA file with haplotype sequences
+- `-i, --individual`: Individual to analyze (name, comma-separated list, or "all")
 - `-o, --output`: Output file (optional, defaults to stdout)
-- `-p, --ploidy`: Number of haplotypes per individual (default: 2)
+- `-t, --threads`: Number of threads for allwave (default: 4)
 - `-v, --verbose`: Verbose output
 
 ### `build` - Build Pangenome Graph
@@ -178,23 +252,40 @@ Runs comprehensive validation tests on coverage data.
 
 ## Important Notes
 
+### How max-qv Works
+
+The `max-qv` command answers the question: **"What's the best possible genotyping accuracy we could achieve for a held-out individual using only other individuals in the dataset?"**
+
+**Process:**
+1. Runs allwave for all-vs-all sequence alignment
+2. For each individual, finds the best matching non-self haplotypes
+3. Computes QV from alignment identity: `QV = -10 * log10(1 - identity)`
+4. Reports the best achievable genotype (pair of haplotypes) and their QV scores
+
+**Understanding the Output:**
+- **QV 20** = 99% sequence identity
+- **QV 30** = 99.9% sequence identity  
+- **QV 40** = 99.99% sequence identity
+- **Typical max QV**: 25-35 for human genome regions
+
+**Example Output:**
+```
+individual  target_hap1  target_hap2  qv_hap1  qv_hap2  avg_qv  identity_hap1  identity_hap2
+HG00096     HG00268#1    HG04036#2    29.1     33.8     31.4    0.9988         0.9996
+```
+This shows that HG00096's best non-self match would be HG00268's haplotype 1 + HG04036's haplotype 2, achieving an average QV of 31.4.
+
 ### Coverage-based vs Sequence-based QV
 
-**Current Implementation (Coverage-based):**
-- QV computed from cosine similarity between coverage vectors
-- `max-qv` finds best matching haplotypes in **coverage space**
-- Fast and efficient but doesn't consider actual sequence similarity
+**hold-out command (Coverage-based QV):**
+- QV computed from cosine similarity between graph node coverage vectors
+- Measures how well genotyping via graph coverage matches the truth
+- Fast and reflects actual genotyping algorithm performance
 
-**Sequence-based QV (Limited Support):**
-- Uses biWFA for sequence alignment
-- Available via `--sequence-qv` flag in hold-out command
-- More accurate but computationally intensive
-- NOT integrated with max-qv computation
-
-**For true allwave-based max QV, you would need:**
-1. Extract actual DNA sequences
-2. Run allwave alignments (4 total for 2x2 pairings)
-3. Compute QV from edit distances
+**max-qv command (Sequence-based QV):**
+- QV computed from actual DNA sequence alignment using allwave
+- Measures theoretical best possible accuracy based on sequence similarity
+- Shows upper bound on genotyping performance
 
 ### Performance Considerations
 

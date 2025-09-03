@@ -162,19 +162,23 @@ enum Commands {
         format: String,
     },
     
-    /// Compute maximum attainable QV for samples
+    /// Compute maximum attainable QV using allwave sequence alignment
     MaxQv {
-        /// Input coverage matrix file (.tsv or .tsv.gz)
+        /// Input FASTA file with sequences
         #[arg(short, long)]
-        coverage: String,
+        fasta: String,
+        
+        /// Individual to analyze (name or "all")
+        #[arg(short, long)]
+        individual: Option<String>,
         
         /// Output file (optional, defaults to stdout)
         #[arg(short, long)]
         output: Option<String>,
         
-        /// Ploidy (number of haplotypes per individual)
-        #[arg(short, long, default_value = "2")]
-        ploidy: usize,
+        /// Number of threads for allwave
+        #[arg(short, long, default_value = "4")]
+        threads: usize,
         
         /// Verbose output
         #[arg(short, long)]
@@ -289,11 +293,12 @@ async fn main() -> Result<()> {
             }
         }
         
-        Commands::MaxQv { coverage, output, ploidy, verbose } => {
+        Commands::MaxQv { fasta, individual, output, threads, verbose } => {
             likegt::commands::max_qv::run_max_qv_analysis(
-                &coverage,
+                &fasta,
+                individual.as_deref(),
                 output.as_deref(),
-                ploidy,
+                threads,
                 verbose,
             ).await
         }
