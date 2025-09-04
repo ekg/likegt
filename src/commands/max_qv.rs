@@ -60,13 +60,17 @@ fn get_individual_id(seq_name: &str) -> String {
     seq_name.split('#').next().unwrap_or(seq_name).to_string()
 }
 
-/// Run allwave for all-vs-all alignment
-fn run_allwave(fasta_file: &str, threads: usize, verbose: bool) -> Result<String> {
+/// Run allwave for alignment
+fn run_allwave(fasta_file: &str, threads: usize, sparsification: &str, verbose: bool) -> Result<String> {
     use std::process::Stdio;
     use std::io::Read;
     
+    if verbose {
+        eprintln!("Running allwave with sparsification: {}", sparsification);
+    }
+    
     let mut child = Command::new("allwave")
-        .args(&["-i", fasta_file, "-t", &threads.to_string()])
+        .args(&["-i", fasta_file, "-t", &threads.to_string(), "-p", sparsification])
         .stdout(Stdio::piped())
         .stderr(if verbose { Stdio::inherit() } else { Stdio::piped() })
         .spawn()
@@ -200,6 +204,7 @@ pub async fn run_max_qv_analysis(
     individual: Option<&str>,
     output_file: Option<&str>,
     threads: usize,
+    sparsification: Option<&str>,
     verbose: bool,
 ) -> Result<()> {
     // Determine which individuals to process
@@ -227,8 +232,11 @@ pub async fn run_max_qv_analysis(
         println!("🧬 Running allwave for all-vs-all alignment...");
     }
     
+    // Use sparsification strategy (default to tree:5:0:0 for speed)
+    let sparsification_mode = sparsification.unwrap_or("tree:5:0:0");
+    
     // Run allwave once for all alignments
-    let paf_output = run_allwave(fasta_file, threads, verbose)?;
+    let paf_output = run_allwave(fasta_file, threads, sparsification_mode, verbose)?;
     
     if verbose {
         let n_lines = paf_output.lines().count();

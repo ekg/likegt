@@ -180,6 +180,11 @@ enum Commands {
         #[arg(short, long, default_value = "4")]
         threads: usize,
         
+        /// Sparsification strategy for allwave (default: tree:5:0:0)
+        /// Options: "none" for exact all-vs-all, "tree:N:F:R" for neighbor-based
+        #[arg(short = 'p', long, default_value = "tree:5:0:0")]
+        sparsification: String,
+        
         /// Verbose output
         #[arg(short, long)]
         verbose: bool,
@@ -293,12 +298,13 @@ async fn main() -> Result<()> {
             }
         }
         
-        Commands::MaxQv { fasta, individual, output, threads, verbose } => {
+        Commands::MaxQv { fasta, individual, output, threads, sparsification, verbose } => {
             likegt::commands::max_qv::run_max_qv_analysis(
                 &fasta,
                 individual.as_deref(),
                 output.as_deref(),
                 threads,
+                Some(&sparsification),
                 verbose,
             ).await
         }
