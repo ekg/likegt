@@ -162,7 +162,7 @@ enum Commands {
         format: String,
     },
     
-    /// Compute maximum attainable QV using allwave sequence alignment
+    /// Compute maximum attainable QV using sequence alignment
     MaxQv {
         /// Input FASTA file with sequences
         #[arg(short, long)]
@@ -176,12 +176,17 @@ enum Commands {
         #[arg(short, long)]
         output: Option<String>,
         
-        /// Number of threads for allwave
+        /// Number of threads for alignment
         #[arg(short, long, default_value = "4")]
         threads: usize,
         
+        /// Alignment method: "allwave" (exact) or "wfmash" (approximate, faster)
+        #[arg(short = 'm', long, default_value = "allwave")]
+        method: String,
+        
         /// Sparsification strategy for allwave (default: tree:5:0:0)
         /// Options: "none" for exact all-vs-all, "tree:N:F:R" for neighbor-based
+        /// (Only used with allwave method)
         #[arg(short = 'p', long, default_value = "tree:5:0:0")]
         sparsification: String,
         
@@ -298,12 +303,13 @@ async fn main() -> Result<()> {
             }
         }
         
-        Commands::MaxQv { fasta, individual, output, threads, sparsification, verbose } => {
+        Commands::MaxQv { fasta, individual, output, threads, method, sparsification, verbose } => {
             likegt::commands::max_qv::run_max_qv_analysis(
                 &fasta,
                 individual.as_deref(),
                 output.as_deref(),
                 threads,
+                &method,
                 Some(&sparsification),
                 verbose,
             ).await
