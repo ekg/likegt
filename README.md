@@ -367,12 +367,6 @@ Contributions are welcome! Please:
 4. Ensure all tests pass
 5. Submit a pull request
 
-## Support
-
-For issues, questions, or suggestions:
-- Open an issue on GitHub
-- Contact: [your contact information]
-
 ## Acknowledgments
 
 This toolkit builds upon several excellent tools:
