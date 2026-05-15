@@ -33,6 +33,12 @@ cargo run -- --help
 ```bash
 # Build graph from FASTA using allwave + seqwish + odgi
 cargo run -- build -f input.fa -o output_prefix -k 51,101 -t 8
+
+# Build graph with impg
+cargo run -- build -f input.fa -o output.gfa --builder impg -t 16
+
+# Build and annotate low-complexity regions with Panplexity
+cargo run -- build -f input.fa -o output_prefix -k 51 --panplexity
 ```
 
 ### 3. Check graph suitability

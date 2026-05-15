@@ -26,7 +26,8 @@ LikeGT implements comprehensive validation pipelines for pangenome genotyping, i
 ### Core Functionality
 - **Hold-out Validation**: Complete pipeline from read simulation to genotype calling
 - **Max QV Analysis**: Compute theoretical upper bounds on genotyping accuracy
-- **Graph Building**: Construct pangenome graphs using allwave + seqwish + odgi
+- **Graph Building**: Construct pangenome graphs using allwave + seqwish + odgi, or the current `impg graph` pipeline
+- **Graph Annotation**: Optional Panplexity low-complexity annotation, masks, weights, and Bandage coloring
 - **Graph Validation**: Check graph suitability for genotyping
 - **Batch Processing**: Process multiple samples efficiently
 - **Multiple Output Formats**: text, JSON, CSV, TSV, table
@@ -55,6 +56,9 @@ LikeGT requires several bioinformatics tools to be installed and available in yo
 **Additional Dependencies:**
 - `allwave` - All-vs-all sequence alignment (required for `max-qv` and `build` commands)
 - `seqwish` - Graph inducer from alignments (required for `build` command)
+- `panplexity` - Low-complexity graph annotation (optional, for `build --panplexity`)
+- `impg` - Implicit pangenome graph toolkit (optional, for `build --builder impg`)
+- `wfmash` - Approximate sequence alignment (optional, for `max-qv --method wfmash`; installed by the `impg` source build)
 - `bwa` (>= 0.7.17) - Alternative aligner (optional, for `--aligner bwa-mem`)
 - `zcat`/`gzip` - For handling compressed files
 
@@ -112,6 +116,8 @@ sudo apt install minimap2 samtools seqtk bwa
 - gfainject: https://github.com/ekg/gfainject  
 - gafpack: https://github.com/ekg/gafpack
 - allwave: https://github.com/ekg/allwave
+- impg: https://github.com/pangenome/impg
+- panplexity: https://github.com/AndreaGuarracino/panplexity
 
 4. **Build LikeGT**:
 ```bash
@@ -167,6 +173,12 @@ likegt build -f sequences.fa -o output_prefix -k 51 -t 8
 
 # Build multiple k-mer graphs
 likegt build -f sequences.fa -o output_prefix -k 25,51,101 -t 8
+
+# Build with the current impg graph pipeline
+likegt build -f sequences.fa -o output.gfa --builder impg -t 16
+
+# Add Panplexity low-complexity annotations to generated GFAs
+likegt build -f sequences.fa -o output_prefix -k 51 --panplexity
 ```
 
 ## Commands
@@ -223,7 +235,7 @@ Computes the best possible QV achievable when genotyping held-out individuals by
 
 ### `build` - Build Pangenome Graph
 
-Constructs pangenome graphs using allwave + seqwish + odgi pipeline.
+Constructs pangenome graphs using the default allwave + seqwish + odgi pipeline or the current `impg graph` pipeline.
 
 **Options:**
 - `-f, --fasta`: Input FASTA file
@@ -231,6 +243,17 @@ Constructs pangenome graphs using allwave + seqwish + odgi pipeline.
 - `-k, --kmer-sizes`: K-mer sizes (comma-separated)
 - `-t, --threads`: Number of threads
 - `--keep-intermediates`: Keep intermediate files
+- `--builder`: Graph backend (`allwave-seqwish`, default; or `impg`)
+- `--impg-gfa-engine`: impg GFA engine (`pggb`, `seqwish`, `poa`, or partitioned forms like `pggb:10000`)
+- `--panplexity`: Run Panplexity on each final GFA
+- `--panplexity-window-size`: Window size for complexity calculation
+- `--panplexity-threshold`: Numeric threshold or `auto`
+- `--panplexity-iqr-multiplier`: IQR multiplier for `auto` thresholding
+- `--panplexity-complexity`: Complexity metric (`linguistic` or `entropy`)
+
+When `--panplexity` is enabled, LikeGT writes sibling files for each final GFA:
+`*.panplexity.gfa`, `*.low-complexity.bed`, `*.panplexity.mask`,
+`*.panplexity.weights.txt`, and `*.panplexity.bandage.csv`.
 
 ### `check` - Validate Graph
 
@@ -317,7 +340,8 @@ This shows that HG00096's best non-self match would be HG00268's haplotype 1 + H
 
 1. **"Command not found" errors**
    - Ensure all required tools are installed and in PATH
-   - Check with: `which minimap2 gfainject gafpack`
+   - Check core tools with: `which minimap2 gfainject gafpack`
+   - Check optional build tools with: `which impg panplexity wfmash`
 
 2. **High QV values (60.0)**
    - Indicates perfect match - check if hold-out is working

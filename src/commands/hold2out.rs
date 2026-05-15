@@ -111,9 +111,6 @@ pub async fn run_batch_hold2out(
     fragment_std: usize,
     aligner: &str,
     preset: &str,
-    genotyper_algorithm: &str,
-    locityper_db: Option<&str>,
-    locityper_preproc: Option<&str>,
     keep_files: bool,
     bias_prefix: Option<&str>,
     bias_fasta: Option<&str>,
@@ -163,9 +160,6 @@ pub async fn run_batch_hold2out(
             fragment_std,
             aligner,
             preset,
-            genotyper_algorithm,
-            locityper_db,
-            locityper_preproc,
             keep_files,
             bias_prefix,
             bias_fasta,
@@ -239,9 +233,6 @@ pub async fn run_complete_hold2out_pipeline(
     fragment_std: usize,
     aligner: &str,
     preset: &str,
-    genotyper_algorithm: &str,
-    locityper_db: Option<&str>,
-    locityper_preproc: Option<&str>,
     keep_files: bool,
     bias_prefix: Option<&str>,
     bias_fasta: Option<&str>,
@@ -400,71 +391,17 @@ pub async fn run_complete_hold2out_pipeline(
     
     // Stage 6: Run genotyping
     let stage_start = std::time::Instant::now();
-    if verbose { println!("🔬 Stage 6: Running {} genotyping", genotyper_algorithm); }
+    if verbose { println!("🔬 Stage 6: Running COSIGT genotyping"); }
 
-    // Create genotyper based on algorithm
-    let mut genotyper = crate::genotyper::create_genotyper(genotyper_algorithm)?;
-
-    // Prepare genotyper configuration
-    let genotyper_config = crate::genotyper::GenotyperConfig {
-        individual: test_individual.to_string(),
+    let genotyping_result = run_cosigt_genotyping(
+        &reference_coverage_file,
+        &sample_coverage_file,
+        test_individual,
         ploidy,
         threads,
         verbose,
         hold_out,
-        algorithm_config: match genotyper_algorithm {
-            "locityper" | "loci" => {
-                let db_dir = locityper_db
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|| output_path.join("locityper_db"));
-                crate::genotyper::AlgorithmConfig::LociTyper {
-                    database_dir: db_dir,
-                    preproc_dir: locityper_preproc.map(PathBuf::from),
-                    debug_level: if verbose { 1 } else { 0 },
-                }
-            }
-            _ => crate::genotyper::AlgorithmConfig::Cosine,
-        },
-    };
-
-    // Prepare genotyper
-    genotyper.prepare(
-        &PathBuf::from(fasta_file),
-        Some(&PathBuf::from(graph_file)),
-        &output_path,
-        &genotyper_config,
     ).await?;
-
-    // Run genotyping
-    let genotype_call = genotyper.genotype(
-        &reads_file_1,
-        Some(&reads_file_2),
-        Some(&reference_coverage_file),
-        Some(&sample_coverage_file),
-        &genotyper_config,
-    ).await?;
-
-    // Convert GenotypeCall to GenotypingResult for compatibility
-    let genotyping_result = GenotypingResult {
-        called_genotype: genotype_call.genotype.clone(),
-        cosine_similarity: genotype_call.confidence,
-        rank: genotype_call.rank,
-        correct: genotype_call.correct.unwrap_or(false),
-        graph_qv: genotype_call.quality_value,
-        sequence_qv: None,
-        total_combinations: match &genotype_call.metadata {
-            crate::genotyper::GenotypeMetadata::Cosine { total_combinations, .. } => *total_combinations,
-            _ => 0,
-        },
-        reference_haplotypes: match &genotype_call.metadata {
-            crate::genotyper::GenotypeMetadata::Cosine { reference_haplotypes, .. } => *reference_haplotypes,
-            _ => 0,
-        },
-        graph_nodes: match &genotype_call.metadata {
-            crate::genotyper::GenotypeMetadata::Cosine { graph_nodes, .. } => *graph_nodes,
-            _ => 0,
-        },
-    };
     
     pipeline_stages.push(PipelineStage {
         name: "genotyping".to_string(),
@@ -675,6 +612,7 @@ async fn find_individual_sequence_ids(
     Ok(ids)
 }
 
+#[allow(dead_code)]
 async fn create_reduced_fasta(
     fasta_file: &str,
     individual: &str,
@@ -1745,6 +1683,7 @@ async fn count_aligned_reads(file: &Path) -> Result<usize> {
         .count())
 }
 
+#[allow(dead_code)]
 async fn calculate_coverage_from_alignments(
     sam_file: &Path,
     reference_coverage_file: &Path,

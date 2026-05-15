@@ -3,6 +3,14 @@ use std::path::Path;
 use std::process::Command;
 use tokio::fs;
 
+#[derive(Debug, Clone)]
+pub struct PanplexityConfig {
+    pub window_size: usize,
+    pub threshold: String,
+    pub iqr_multiplier: f64,
+    pub complexity: String,
+}
+
 /// Build pangenome graph(s) from FASTA using allwave + seqwish + odgi pipeline
 pub async fn build_graph_allwave_seqwish(
     fasta_path: &str,
@@ -12,6 +20,7 @@ pub async fn build_graph_allwave_seqwish(
     pruning: &str,
     visualize: bool,
     keep_intermediates: bool,
+    panplexity: Option<&PanplexityConfig>,
 ) -> Result<()> {
     println!("Building graph(s) from FASTA: {}", fasta_path);
     println!("K-mer sizes: {}", kmer_sizes);
@@ -128,6 +137,10 @@ pub async fn build_graph_allwave_seqwish(
         // Write final GFA
         fs::write(&final_gfa, &view_output.stdout).await?;
         println!("   Created final GFA: {}", final_gfa);
+
+        if let Some(config) = panplexity {
+            run_panplexity(&final_gfa, threads, config)?;
+        }
         
         // Step 5: Optional visualization
         if visualize {
@@ -168,6 +181,113 @@ pub async fn build_graph_allwave_seqwish(
     }
     
     println!("Graph construction complete!");
+    Ok(())
+}
+
+/// Build a pangenome graph from FASTA using the current impg graph pipeline.
+pub async fn build_graph_with_impg(
+    fasta_path: &str,
+    output_path: &str,
+    threads: usize,
+    gfa_engine: &str,
+    panplexity: Option<&PanplexityConfig>,
+) -> Result<()> {
+    println!("Building graph from FASTA with impg: {}", fasta_path);
+    println!("Output: {}, Threads: {}, GFA engine: {}", output_path, threads, gfa_engine);
+
+    if !Path::new(fasta_path).exists() {
+        return Err(anyhow::anyhow!("Input FASTA file not found: {}", fasta_path));
+    }
+
+    if let Some(parent) = Path::new(output_path).parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).await?;
+        }
+    }
+
+    let status = Command::new("impg")
+        .args([
+            "graph",
+            "--sequence-files",
+            fasta_path,
+            "-g",
+            output_path,
+            "-t",
+            &threads.to_string(),
+            "--gfa-engine",
+            gfa_engine,
+        ])
+        .status()
+        .context("Failed to run impg graph - is impg installed?")?;
+
+    if !status.success() {
+        return Err(anyhow::anyhow!("impg graph failed with exit code: {:?}", status.code()));
+    }
+
+    println!("Created final GFA: {}", output_path);
+
+    if let Some(config) = panplexity {
+        run_panplexity(output_path, threads, config)?;
+    }
+
+    Ok(())
+}
+
+fn run_panplexity(
+    input_gfa: &str,
+    threads: usize,
+    config: &PanplexityConfig,
+) -> Result<()> {
+    let output_prefix = input_gfa
+        .strip_suffix(".gfa")
+        .unwrap_or(input_gfa);
+    let annotated_gfa = format!("{}.panplexity.gfa", output_prefix);
+    let bed = format!("{}.low-complexity.bed", output_prefix);
+    let bandage_csv = format!("{}.panplexity.bandage.csv", output_prefix);
+    let mask = format!("{}.panplexity.mask", output_prefix);
+    let weights = format!("{}.panplexity.weights.txt", output_prefix);
+
+    println!("   Running panplexity on {}", input_gfa);
+
+    let status = Command::new("panplexity")
+        .args([
+            "-i",
+            input_gfa,
+            "-w",
+            &config.window_size.to_string(),
+            "-t",
+            &config.threshold,
+            "--iqr-multiplier",
+            &config.iqr_multiplier.to_string(),
+            "--complexity",
+            &config.complexity,
+            "--threads",
+            &threads.to_string(),
+            "-o",
+            &annotated_gfa,
+            "-b",
+            &bed,
+            "-c",
+            &bandage_csv,
+            "-m",
+            &mask,
+            "--weights",
+            &weights,
+        ])
+        .status()
+        .context("Failed to run panplexity - is it installed?")?;
+
+    if !status.success() {
+        return Err(anyhow::anyhow!("panplexity failed with exit code: {:?}", status.code()));
+    }
+
+    println!("   Created panplexity outputs:");
+    println!("      Annotated GFA: {}", annotated_gfa);
+    println!("      Low-complexity BED: {}", bed);
+    println!("      Bandage CSV: {}", bandage_csv);
+    println!("      Node mask: {}", mask);
+    println!("      Node weights: {}", weights);
+
     Ok(())
 }
 

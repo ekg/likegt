@@ -13,6 +13,10 @@ Cargo.lock
 *.gfa
 *.og
 *.png
+*.low-complexity.bed
+*.panplexity.mask
+*.panplexity.weights.txt
+*.panplexity.bandage.csv
 *.seq
 *.coverage.tsv
 *.coverage.tsv.gz

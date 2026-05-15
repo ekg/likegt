@@ -71,6 +71,34 @@ enum Commands {
         /// Keep intermediate files (PAF, seqwish GFA)
         #[arg(long)]
         keep_intermediates: bool,
+
+        /// Graph builder backend (allwave-seqwish, impg)
+        #[arg(long, default_value = "allwave-seqwish")]
+        builder: String,
+
+        /// impg GFA engine when using --builder impg (pggb, seqwish, poa, or partitioned forms like pggb:10000)
+        #[arg(long, default_value = "pggb")]
+        impg_gfa_engine: String,
+
+        /// Run panplexity on each final GFA
+        #[arg(long)]
+        panplexity: bool,
+
+        /// Panplexity window size
+        #[arg(long, default_value = "100")]
+        panplexity_window_size: usize,
+
+        /// Panplexity threshold, either a number or "auto"
+        #[arg(long, default_value = "auto")]
+        panplexity_threshold: String,
+
+        /// Panplexity IQR multiplier for auto thresholding
+        #[arg(long, default_value = "1.5")]
+        panplexity_iqr_multiplier: f64,
+
+        /// Panplexity complexity metric (linguistic or entropy)
+        #[arg(long, default_value = "linguistic")]
+        panplexity_complexity: String,
     },
     
     /// Run complete hold-out validation pipeline
@@ -216,16 +244,63 @@ async fn main() -> Result<()> {
             likegt::commands::check::check_graph_genotyping_suitability(&gfa, &output)
         }
         
-        Commands::Build { fasta, output, kmer_sizes, threads, pruning, visualize, keep_intermediates } => {
-            likegt::pipeline::build::build_graph_allwave_seqwish(
-                &fasta,
-                &output,
-                &kmer_sizes,
-                threads,
-                &pruning,
-                visualize,
-                keep_intermediates,
-            ).await
+        Commands::Build {
+            fasta,
+            output,
+            kmer_sizes,
+            threads,
+            pruning,
+            visualize,
+            keep_intermediates,
+            builder,
+            impg_gfa_engine,
+            panplexity,
+            panplexity_window_size,
+            panplexity_threshold,
+            panplexity_iqr_multiplier,
+            panplexity_complexity,
+        } => {
+            let panplexity_config = panplexity.then(|| {
+                likegt::pipeline::build::PanplexityConfig {
+                    window_size: panplexity_window_size,
+                    threshold: panplexity_threshold,
+                    iqr_multiplier: panplexity_iqr_multiplier,
+                    complexity: panplexity_complexity,
+                }
+            });
+
+            match builder.as_str() {
+                "allwave-seqwish" | "allwave" | "seqwish" => {
+                    likegt::pipeline::build::build_graph_allwave_seqwish(
+                        &fasta,
+                        &output,
+                        &kmer_sizes,
+                        threads,
+                        &pruning,
+                        visualize,
+                        keep_intermediates,
+                        panplexity_config.as_ref(),
+                    ).await
+                }
+                "impg" => {
+                    let output_gfa = if output.ends_with(".gfa") {
+                        output
+                    } else {
+                        format!("{}.gfa", output)
+                    };
+                    likegt::pipeline::build::build_graph_with_impg(
+                        &fasta,
+                        &output_gfa,
+                        threads,
+                        &impg_gfa_engine,
+                        panplexity_config.as_ref(),
+                    ).await
+                }
+                other => Err(anyhow::anyhow!(
+                    "Unsupported build backend '{}'. Use 'allwave-seqwish' or 'impg'.",
+                    other
+                )),
+            }
         }
         
         Commands::HoldOut { 

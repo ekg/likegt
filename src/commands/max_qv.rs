@@ -36,8 +36,8 @@ fn parse_paf_line(line: &str) -> Option<AlignmentInfo> {
     // Get alignment coordinates for sequence-space length calculation
     let query_start: u64 = fields[2].parse().ok()?;
     let query_end: u64 = fields[3].parse().ok()?;
-    let target_start: u64 = fields[7].parse().ok()?;
-    let target_end: u64 = fields[8].parse().ok()?;
+    let _target_start: u64 = fields[7].parse().ok()?;
+    let _target_end: u64 = fields[8].parse().ok()?;
     
     let matches: u64 = fields[9].parse().ok()?;
     

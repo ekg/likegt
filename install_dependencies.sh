@@ -88,6 +88,9 @@ echo
 echo "Additional dependencies:"
 check_command "allwave" || MISSING_DEPS+=("allwave")
 check_command "seqwish" || MISSING_DEPS+=("seqwish")
+check_command "wfmash" || echo "  (optional, for max-qv --method wfmash)"
+check_command "impg" || echo "  (optional, for build --builder impg)"
+check_command "panplexity" || echo "  (optional, for build --panplexity)"
 check_command "bwa" || echo "  (optional)"
 
 echo
@@ -149,6 +152,14 @@ if [ "$HAS_CONDA" = true ]; then
         if ! command -v allwave &> /dev/null; then
             echo "  - allwave: Install from https://github.com/ekg/allwave"
         fi
+
+        if ! command -v impg &> /dev/null; then
+            echo "  - impg (optional): Install with 'conda install -c bioconda impg' or from https://github.com/pangenome/impg"
+        fi
+
+        if ! command -v panplexity &> /dev/null; then
+            echo "  - panplexity (optional): Install from https://github.com/AndreaGuarracino/panplexity"
+        fi
         
         echo
         echo -e "${GREEN}Installation complete!${NC}"
@@ -180,6 +191,8 @@ elif [ "$HAS_APT" = true ]; then
         echo "  - gfainject: https://github.com/ekg/gfainject"
         echo "  - gafpack: https://github.com/ekg/gafpack"
         echo "  - allwave: https://github.com/ekg/allwave"
+        echo "  - impg (optional): https://github.com/pangenome/impg"
+        echo "  - panplexity (optional): https://github.com/AndreaGuarracino/panplexity"
         echo "  - wgsim: https://github.com/lh3/wgsim"
     fi
 else
@@ -198,6 +211,8 @@ else
     echo "  - gfainject: https://github.com/ekg/gfainject"
     echo "  - gafpack: https://github.com/ekg/gafpack"
     echo "  - allwave: https://github.com/ekg/allwave"
+    echo "  - impg (optional): https://github.com/pangenome/impg"
+    echo "  - panplexity (optional): https://github.com/AndreaGuarracino/panplexity"
 fi
 
 echo
