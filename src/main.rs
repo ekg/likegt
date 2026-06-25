@@ -189,6 +189,101 @@ enum Commands {
         #[arg(long, default_value = "text")]
         format: String,
     },
+
+    /// Genotype an externally aligned BAM/CRAM over a reference region
+    Geno {
+        /// Input BAM/CRAM aligned to an external reference
+        #[arg(short = 'b', long = "alignment", visible_alias = "bam", visible_alias = "cram")]
+        alignment: String,
+
+        /// Region to extract from the alignment, in samtools format (for example chr6:29600000-29720000)
+        #[arg(short, long)]
+        region: String,
+
+        /// Pangenome graph to genotype against
+        #[arg(short, long)]
+        graph: String,
+
+        /// FASTA of graph paths to realign reads against; existing BWA indexes are reused
+        #[arg(short = 'x', long = "index-sequence", visible_alias = "graph-fasta", visible_alias = "paths-fasta")]
+        index_sequence: Option<String>,
+
+        /// Reference FASTA for CRAM decoding or external-alignment region extraction
+        #[arg(long = "alignment-reference", visible_alias = "cram-reference")]
+        alignment_reference: Option<String>,
+
+        /// Existing odgi/gafpack-compatible reference coverage TSV(.gz)
+        #[arg(long)]
+        reference_coverage: Option<String>,
+
+        /// Output directory for genotyping results
+        #[arg(short, long, default_value = "geno_results")]
+        output: String,
+
+        /// Sample ID to use in outputs
+        #[arg(short, long)]
+        sample: Option<String>,
+
+        /// Ploidy for genotype combinations
+        #[arg(short, long, default_value = "2")]
+        ploidy: usize,
+
+        /// Number of threads
+        #[arg(short, long, default_value = "4")]
+        threads: usize,
+
+        /// Aligner for realigning region reads to graph path sequences (minimap2, bwa-mem)
+        #[arg(long, default_value = "minimap2")]
+        aligner: String,
+
+        /// Aligner preset, for example sr for short reads or map-ont for ONT
+        #[arg(long, default_value = "sr")]
+        preset: String,
+
+        /// Do not build a missing BWA index for --index-sequence
+        #[arg(long)]
+        no_build_index: bool,
+
+        /// Minimum MAPQ when extracting reads from the external alignment
+        #[arg(long, default_value = "0")]
+        min_mapq: u32,
+
+        /// SAM flags to exclude when extracting reads from the external alignment
+        #[arg(long, default_value = "0x904")]
+        exclude_flags: String,
+
+        /// Auto-load sibling Panplexity mask/weights files for the graph
+        #[arg(long)]
+        panplexity: bool,
+
+        /// Panplexity node mask/list to exclude from genotyping
+        #[arg(long, visible_alias = "pamplexity-mask")]
+        panplexity_mask: Option<String>,
+
+        /// Panplexity node weights to use in weighted cosine similarity
+        #[arg(long, visible_alias = "pamplexity-weights")]
+        panplexity_weights: Option<String>,
+
+        /// Exclude haplotypes whose names contain this pattern; may be repeated
+        #[arg(long)]
+        exclude_haplotype: Vec<String>,
+
+        /// Number of top genotype combinations to write and print; 0 writes all
+        #[arg(long, default_value = "10")]
+        top: usize,
+
+        /// Keep intermediate BAM/SAM/GAF/FASTQ files
+        #[arg(long)]
+        keep_files: bool,
+
+        /// Output format (text, table, tsv, json)
+        #[arg(long, default_value = "text")]
+        format: String,
+
+        /// Verbose progress output
+        #[arg(short, long)]
+        verbose: bool,
+    },
     
     /// Compute maximum attainable QV using sequence alignment
     MaxQv {
@@ -376,6 +471,58 @@ async fn main() -> Result<()> {
                     &format,
                 ).await
             }
+        }
+
+        Commands::Geno {
+            alignment,
+            region,
+            graph,
+            index_sequence,
+            alignment_reference,
+            reference_coverage,
+            output,
+            sample,
+            ploidy,
+            threads,
+            aligner,
+            preset,
+            no_build_index,
+            min_mapq,
+            exclude_flags,
+            panplexity,
+            panplexity_mask,
+            panplexity_weights,
+            exclude_haplotype,
+            top,
+            keep_files,
+            format,
+            verbose,
+        } => {
+            likegt::commands::geno::run_geno(likegt::commands::geno::GenoConfig {
+                alignment,
+                region,
+                graph,
+                index_sequence,
+                alignment_reference,
+                reference_coverage,
+                output_dir: output,
+                sample_id: sample,
+                ploidy,
+                threads,
+                aligner,
+                preset,
+                no_build_index,
+                min_mapq,
+                exclude_flags,
+                panplexity,
+                panplexity_mask,
+                panplexity_weights,
+                exclude_haplotype_patterns: exclude_haplotype,
+                top_n: top,
+                keep_files,
+                format,
+                verbose,
+            }).await.map(|_| ())
         }
         
         Commands::MaxQv { fasta, individual, output, threads, method, sparsification, verbose } => {
