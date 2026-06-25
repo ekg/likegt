@@ -564,9 +564,13 @@ fn inject_bam_to_graph(graph: &str, bam: &Path, output_gaf: &Path) -> Result<()>
 
 fn generate_sample_coverage(graph: &str, gaf: &Path, output_coverage: &Path) -> Result<()> {
     let gafpack = require_tool("gafpack")?;
-    let mut command = Command::new(gafpack);
+    let mut command = Command::new(&gafpack);
+    if gafpack_supports_current_cli(&gafpack) {
+        command.args(["--gfa", graph, "--gaf"]);
+    } else {
+        command.args(["--graph", graph, "--alignments"]);
+    }
     command
-        .args(["--graph", graph, "--alignments"])
         .arg(gaf)
         .arg("--len-scale")
         .stdout(Stdio::piped())
@@ -580,6 +584,14 @@ fn generate_sample_coverage(graph: &str, gaf: &Path, output_coverage: &Path) -> 
         );
     }
     write_gzip_bytes(output_coverage, &output.stdout)
+}
+
+fn gafpack_supports_current_cli(gafpack: &Path) -> bool {
+    let Ok(output) = Command::new(gafpack).arg("--help").output() else {
+        return false;
+    };
+    let help = String::from_utf8_lossy(&output.stdout);
+    help.contains("--gfa <GFA>") && help.contains("--gaf <GAF>")
 }
 
 fn build_genotype_inputs(

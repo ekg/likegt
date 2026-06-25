@@ -71,7 +71,7 @@ compatible_tool() {
             "$bin_path" --help 2>&1 | grep -q -- 'gfainject --gfa'
             ;;
         gafpack)
-            "$bin_path" --help 2>&1 | grep -q -- '--graph <GRAPH>'
+            "$bin_path" --help 2>&1 | grep -q -- '--gfa <GFA>'
             ;;
         *)
             return 0
@@ -87,7 +87,7 @@ install_tool \
 install_tool \
     gafpack \
     https://github.com/ekg/gafpack.git \
-    ad31875b6914d964c6fd72d1bf334f0843538fb6
+    b539b0f507698779c89827c82d5979c1b3146333
 
 echo
 echo "Add these tools to PATH with:"
