@@ -112,9 +112,14 @@ and `gafpack`):
 guix time-machine -C .guix/channels.scm -- shell -m .guix/manifest.scm
 ```
 
-`gfainject` is still required for `likegt geno`, but is not available from the
-current fetchable Guix channel state pinned here. The checker fails if it is not
-already available on PATH. To run the external BAM/graph smoke test locally:
+`gfainject` and `gafpack` can also be installed as pinned Cargo-built binaries:
+
+```bash
+scripts/install-geno-cargo-tools.sh
+export PATH="$PWD/target/tools/bin:$PATH"
+```
+
+To run the external BAM/graph smoke test locally:
 
 ```bash
 scripts/run-geno-smoke.sh

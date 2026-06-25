@@ -1258,7 +1258,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_geno_pipeline_with_external_bam_if_tools_available() {
-        for tool in ["samtools", "minimap2", "gfainject", "gafpack", "odgi"] {
+        for tool in ["samtools", "minimap2", "gfainject", "gafpack"] {
             if which::which(tool).is_err() {
                 eprintln!(
                     "Skipping external BAM geno test because {} is not installed",
@@ -1273,6 +1273,7 @@ mod tests {
         let seq_b = make_sequence(29, 240);
         let graph = dir.path().join("test.gfa");
         let graph_paths = dir.path().join("graph_paths.fa");
+        let reference_coverage = dir.path().join("reference_coverage.tsv.gz");
         let external_ref = dir.path().join("external.fa");
         let reads = dir.path().join("reads.fq");
         let external_sam = dir.path().join("external.sam");
@@ -1291,6 +1292,11 @@ mod tests {
         fs::write(
             &graph_paths,
             format!(">hapA\n{}\n>hapB\n{}\n", seq_a, seq_b),
+        )
+        .unwrap();
+        write_gzip_bytes(
+            &reference_coverage,
+            b"path.name\tpath.length\tpath.step.count\tnode.1\tnode.2\nhapA\t240\t1\t240\t0\nhapB\t240\t1\t0\t240\n",
         )
         .unwrap();
         fs::write(&external_ref, format!(">chr1\n{}\n", seq_b)).unwrap();
@@ -1343,7 +1349,7 @@ mod tests {
             graph: graph.to_string_lossy().to_string(),
             index_sequence: Some(graph_paths.to_string_lossy().to_string()),
             alignment_reference: None,
-            reference_coverage: None,
+            reference_coverage: Some(reference_coverage.to_string_lossy().to_string()),
             output_dir: output_dir.to_string_lossy().to_string(),
             sample_id: Some("sampleB".to_string()),
             ploidy: 2,

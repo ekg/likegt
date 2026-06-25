@@ -11,6 +11,10 @@ if [[ "${LIKEGT_SKIP_ENV_SH:-0}" != 1 && -f "$repo_dir/env.sh" ]]; then
     source "$repo_dir/env.sh"
 fi
 
-"$repo_dir/scripts/check-geno-tools.sh" --required-only
+tool_root="${LIKEGT_TOOL_ROOT:-$repo_dir/target/tools}"
+"$repo_dir/scripts/install-geno-cargo-tools.sh"
+export PATH="$tool_root/bin:$PATH"
+
+"$repo_dir/scripts/check-geno-tools.sh" --required-only --precomputed-reference
 
 cargo test --locked test_geno_pipeline_with_external_bam_if_tools_available -- --nocapture

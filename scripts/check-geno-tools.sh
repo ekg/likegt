@@ -3,15 +3,19 @@ set -u
 
 show_optional=1
 strict_optional=0
+require_odgi=1
 
 usage() {
     cat <<'USAGE'
-Usage: scripts/check-geno-tools.sh [--required-only] [--strict-optionals]
+Usage: scripts/check-geno-tools.sh [--required-only] [--strict-optionals] [--precomputed-reference]
 
 Checks the external tools used by `likegt geno`.
 
 Required:
   samtools minimap2 gfainject gafpack odgi
+
+With --precomputed-reference, odgi is not required because `likegt geno` can
+run with both --index-sequence and --reference-coverage supplied.
 
 Optional:
   bwa        needed for --aligner bwa-mem
@@ -26,6 +30,9 @@ for arg in "$@"; do
             ;;
         --strict-optionals)
             strict_optional=1
+            ;;
+        --precomputed-reference)
+            require_odgi=0
             ;;
         -h|--help)
             usage
@@ -42,6 +49,12 @@ done
 required_tools=(samtools minimap2 gfainject gafpack odgi)
 optional_tools=(bwa panplexity)
 status=0
+
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+tool_root="${LIKEGT_TOOL_ROOT:-$repo_dir/target/tools}"
+if [[ -d "$tool_root/bin" ]]; then
+    export PATH="$tool_root/bin:$PATH"
+fi
 
 version_line() {
     local tool=$1
@@ -99,6 +112,9 @@ check_tool() {
 
 echo "Checking required likegt geno tools"
 for tool in "${required_tools[@]}"; do
+    if [[ "$tool" == "odgi" && "$require_odgi" != 1 ]]; then
+        continue
+    fi
     check_tool "$tool" 1
 done
 

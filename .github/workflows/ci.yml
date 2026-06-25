@@ -31,7 +31,9 @@ jobs:
             clang \
             cmake \
             libclang-dev \
+            minimap2 \
             pkg-config \
+            samtools \
             zlib1g-dev
 
       - name: Select Rust toolchain
@@ -41,8 +43,16 @@ jobs:
           rustc --version
           cargo --version
 
+      - name: Install geno Rust tools
+        run: |
+          scripts/install-geno-cargo-tools.sh
+          echo "$PWD/target/tools/bin" >> "$GITHUB_PATH"
+
       - name: Build
         run: cargo build --locked
+
+      - name: Geno external BAM smoke test
+        run: cargo test --locked test_geno_pipeline_with_external_bam_if_tools_available -- --nocapture
 
       - name: Test
         run: cargo test --locked
