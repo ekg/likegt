@@ -50,7 +50,7 @@ LikeGT requires several bioinformatics tools to be installed and available in yo
 - `wgsim` (>= 1.0) - Read simulator for next-generation sequencing
 - `gfainject` - Tool to project SAM/BAM alignments onto pangenome graphs
 - `gafpack` - Coverage calculator for GAF alignments
-- `samtools` (>= 1.17) - SAM/BAM file manipulation
+- `samtools` (>= 1.14) - SAM/BAM file manipulation
 - `seqtk` (>= 1.3) - FASTA/FASTQ processing toolkit
 
 **Additional Dependencies:**
@@ -84,6 +84,40 @@ cargo test
 
 # Install to cargo bin directory
 cargo install --path .
+```
+
+### Guix / Octopus Setup
+
+On Octopus, use the repository environment wrapper before building or running
+tests:
+
+```bash
+source ./env.sh
+cargo build --locked
+cargo test --locked
+```
+
+The `geno` command also needs external graph/alignment tools. Check the local
+PATH with:
+
+```bash
+scripts/check-geno-tools.sh
+```
+
+The repo includes `.guix/channels.scm` and `.guix/manifest.scm` for the
+Guix-resolvable part of that toolchain (`samtools`, `minimap2`, `bwa`, `odgi`,
+and `gafpack`):
+
+```bash
+guix time-machine -C .guix/channels.scm -- shell -m .guix/manifest.scm
+```
+
+`gfainject` is still required for `likegt geno`, but is not available from the
+current fetchable Guix channel state pinned here. The checker fails if it is not
+already available on PATH. To run the external BAM/graph smoke test locally:
+
+```bash
+scripts/run-geno-smoke.sh
 ```
 
 ### Manual Installation
@@ -374,7 +408,8 @@ This shows that HG00096's best non-self match would be HG00268's haplotype 1 + H
 
 1. **"Command not found" errors**
    - Ensure all required tools are installed and in PATH
-   - Check core tools with: `which minimap2 gfainject gafpack`
+   - Check `geno` tools with: `scripts/check-geno-tools.sh`
+   - Check core tools manually with: `which minimap2 gfainject gafpack`
    - Check optional build tools with: `which impg panplexity wfmash`
 
 2. **High QV values (60.0)**
