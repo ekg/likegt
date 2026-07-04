@@ -50,7 +50,7 @@ LikeGT requires several bioinformatics tools to be installed and available in yo
 - `wgsim` (>= 1.0) - Read simulator for next-generation sequencing
 - `gfainject` - Tool to project SAM/BAM alignments onto pangenome graphs
 - `gafpack` - Coverage calculator for GAF alignments
-- `samtools` (>= 1.17) - SAM/BAM file manipulation
+- `samtools` (>= 1.14) - SAM/BAM file manipulation
 - `seqtk` (>= 1.3) - FASTA/FASTQ processing toolkit
 
 **Additional Dependencies:**
@@ -85,6 +85,52 @@ cargo test
 # Install to cargo bin directory
 cargo install --path .
 ```
+
+### Guix / Octopus Setup
+
+On Octopus, use the repository environment wrapper before building or running
+tests:
+
+```bash
+source ./env.sh
+cargo build --locked
+cargo test --locked
+```
+
+The `geno` command also needs external graph/alignment tools. Check the local
+PATH with:
+
+```bash
+scripts/check-geno-tools.sh
+```
+
+The repo includes `.guix/channels.scm` and `.guix/manifest.scm` for the
+Guix-resolvable part of that toolchain (`samtools`, `minimap2`, `bwa`, `odgi`,
+and a Guix-packaged `gafpack`):
+
+```bash
+guix time-machine -C .guix/channels.scm -- shell -m .guix/manifest.scm
+```
+
+`gfainject` and the current `gafpack` can also be installed as pinned
+Cargo-built binaries:
+
+```bash
+scripts/install-geno-cargo-tools.sh
+export PATH="$PWD/target/tools/bin:$PATH"
+```
+
+To run the external BAM/graph smoke test locally:
+
+```bash
+scripts/run-geno-smoke.sh
+```
+
+The smoke test installs the pinned Cargo-built `gfainject` and `gafpack`
+binaries into `target/tools/bin`, checks the required tools, and runs the
+external BAM genotyping test. The production `geno` command supports both the
+current `gafpack --gfa/--gaf` CLI and the older `gafpack --graph/--alignments`
+CLI.
 
 ### Manual Installation
 
@@ -139,7 +185,25 @@ likegt hold-out -f sequences.fa.gz -g graph.gfa -i "HG00096,HG00171,HG00268" -v
 likegt hold-out -f sequences.fa.gz -g graph.gfa -i all --format tsv > results.tsv
 ```
 
-### 2. Compute Maximum Attainable QV
+### 2. Genotype an External BAM/CRAM Region
+
+```bash
+likegt geno \
+  --alignment sample.bam \
+  --region chr6:29600000-29720000 \
+  --graph hla.gfa \
+  --index-sequence hla.graph_paths.fa \
+  --sample HG00096 \
+  --output geno_results
+
+# Optionally exclude Panplexity-masked nodes from COSIGT scoring
+likegt geno -b sample.cram -r chr6:29600000-29720000 -g hla.gfa \
+  --alignment-reference grch38.fa \
+  --index-sequence hla.graph_paths.fa \
+  --panplexity-mask hla.panplexity.mask
+```
+
+### 3. Compute Maximum Attainable QV
 
 ```bash
 # Single individual - find best non-self match
@@ -165,7 +229,7 @@ likegt max-qv -f sequences.fa.gz -i all -v
 likegt max-qv -f sequences.fa.gz -i all -o max_qv_results.tsv
 ```
 
-### 3. Build Pangenome Graph
+### 4. Build Pangenome Graph
 
 ```bash
 # Build graph with specific k-mer size
@@ -221,6 +285,22 @@ The hold-out validation pipeline evaluates genotyping accuracy by simulating a r
 - `--simulator`: Read simulator (wgsim, mason, pbsim3)
 - `--format`: Output format (text, json, csv, tsv, table)
 - `-v, --verbose`: Verbose output
+
+### `geno` - External BAM/CRAM Genotyping
+
+Genotypes reads from an existing BAM/CRAM alignment. The command extracts reads from a samtools-style region, converts them to FASTQ, realigns them to graph path sequences, projects the alignments into the graph with `gfainject`, calculates node coverage with `gafpack`, and ranks the closest haplotype combinations with COSIGT.
+
+**Options:**
+- `-b, --alignment`: Input BAM/CRAM aligned to an external reference
+- `-r, --region`: Region to extract, such as `chr6:29600000-29720000`
+- `-g, --graph`: Pangenome graph to genotype against
+- `-x, --index-sequence`: FASTA of graph paths to align against; existing BWA indexes are reused
+- `--alignment-reference`: Reference FASTA for CRAM decoding
+- `--reference-coverage`: Existing graph path coverage TSV(.gz); otherwise generated with `odgi paths -H`
+- `--aligner`: Realigner (`minimap2`, default; or `bwa-mem`)
+- `--panplexity`: Auto-load sibling `*.panplexity.mask` or `*.panplexity.weights.txt` files
+- `--panplexity-mask`: Exclude masked/low-complexity graph nodes from COSIGT scoring
+- `--panplexity-weights`: Use per-node weights in weighted cosine similarity
 
 ### `max-qv` - Maximum Attainable QV using Sequence Alignment
 
@@ -340,7 +420,8 @@ This shows that HG00096's best non-self match would be HG00268's haplotype 1 + H
 
 1. **"Command not found" errors**
    - Ensure all required tools are installed and in PATH
-   - Check core tools with: `which minimap2 gfainject gafpack`
+   - Check `geno` tools with: `scripts/check-geno-tools.sh`
+   - Check core tools manually with: `which minimap2 gfainject gafpack`
    - Check optional build tools with: `which impg panplexity wfmash`
 
 2. **High QV values (60.0)**

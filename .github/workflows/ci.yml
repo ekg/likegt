@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust build and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      CXXFLAGS: "-include limits -include cstdint"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            cmake \
+            libclang-dev \
+            minimap2 \
+            pkg-config \
+            samtools \
+            zlib1g-dev
+
+      - name: Select Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version
+          cargo --version
+
+      - name: Install geno Rust tools
+        run: |
+          scripts/install-geno-cargo-tools.sh
+          echo "$PWD/target/tools/bin" >> "$GITHUB_PATH"
+
+      - name: Build
+        run: cargo build --locked
+
+      - name: Geno external BAM smoke test
+        run: cargo test --locked test_geno_pipeline_with_external_bam_if_tools_available -- --nocapture
+
+      - name: Test
+        run: cargo test --locked
