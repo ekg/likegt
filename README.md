@@ -106,13 +106,14 @@ scripts/check-geno-tools.sh
 
 The repo includes `.guix/channels.scm` and `.guix/manifest.scm` for the
 Guix-resolvable part of that toolchain (`samtools`, `minimap2`, `bwa`, `odgi`,
-and `gafpack`):
+and a Guix-packaged `gafpack`):
 
 ```bash
 guix time-machine -C .guix/channels.scm -- shell -m .guix/manifest.scm
 ```
 
-`gfainject` and `gafpack` can also be installed as pinned Cargo-built binaries:
+`gfainject` and the current `gafpack` can also be installed as pinned
+Cargo-built binaries:
 
 ```bash
 scripts/install-geno-cargo-tools.sh
@@ -124,6 +125,12 @@ To run the external BAM/graph smoke test locally:
 ```bash
 scripts/run-geno-smoke.sh
 ```
+
+The smoke test installs the pinned Cargo-built `gfainject` and `gafpack`
+binaries into `target/tools/bin`, checks the required tools, and runs the
+external BAM genotyping test. The production `geno` command supports both the
+current `gafpack --gfa/--gaf` CLI and the older `gafpack --graph/--alignments`
+CLI.
 
 ### Manual Installation
 
